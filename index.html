@@ -1736,10 +1736,14 @@ renderRecordManager();
  $('customWebhookSave').addEventListener('click',saveForm);$('customWebhookCancel').addEventListener('click',()=>{clearForm();status('Edit cancelled. Saved webhook was not changed.')});$('customWebhookPreviewBtn').addEventListener('click',()=>{const c=currentForm(),err=validate(c);if(err){status(err,'error');return}$('customWebhookPayload').textContent=JSON.stringify(payloadFor(c),null,2);$('customWebhookPreview').open=true;status('Payload preview generated locally. Nothing has been sent.')});$('customWebhookEvent').addEventListener('change',()=>{if($('customWebhookEvent').value==='backup')$('customWebhookIncludeBackup').checked=true});
  window.myTimeSendFridayReport=async function(){
   const now=new Date(),key=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const monday=new Date(now);monday.setDate(now.getDate()-((now.getDay()+6)%7));const weekKey=monday.getFullYear()+'-'+String(monday.getMonth()+1).padStart(2,'0')+'-'+String(monday.getDate()).padStart(2,'0');const sentKey='mytime-weekly-report-sent-'+weekKey;
+  try{if(localStorage.getItem(sentKey)==='1')return {skipped:true,reason:'weekly report already sent'};}catch(e){}
+  if(now.getDay()!==5)throw Error('Weekly report can only be sent after Friday clock-out.');
   // Only run after a Friday clock-out. Make is the server-side delivery path; do not store mail credentials in the browser.
   const cfg={id:'friday-auto-report',name:'FOSS myTIME Weekly Report',provider:'make',url:'https://hook.us2.make.com/1cxwtvt1batjywk5n0recrwsfllt5xak',event:'weekly-report',recipient:'wuflestad@att.net',includePunches:true,includeBackup:false};
   const payload=payloadFor(cfg);payload.to='wuflestad@att.net';payload.subject='FOSS myTIME | Weekly Timecard Report — '+key;payload.reportName='Weekly Timecard Report';
   const response=await fetch('/api/make-webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:cfg.url,payload})});let result={};try{result=await response.json()}catch{}if(!response.ok)throw Error(result.error||'HTTP '+response.status);
+  try{localStorage.setItem(sentKey,'1')}catch(e){}
   const node=document.getElementById('webhookStatus');if(node){node.textContent='Friday weekly report submitted for delivery to wuflestad@att.net. Check your email and the Make run history to confirm delivery.';node.setAttribute('data-delivery-status','submitted')}
   return result;
  };
