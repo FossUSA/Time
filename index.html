@@ -668,6 +668,20 @@ body.dark-mode .top {
   padding: 0 !important;
   outline: 0 !important;
 }
+
+/* A paid 15-minute break turns red as soon as it exceeds 15 minutes. */
+.break-countdown.over15{background:#fff0f0!important;border-color:#dc2626!important;color:#991b1b!important;box-shadow:0 0 0 1px #dc2626 inset}
+.break-countdown.over15 .break-countdown-head,
+.break-countdown.over15 #breakCountdownTime,
+.break-countdown.over15 #breakCountdownHelp{color:#991b1b!important}
+.break-countdown.over15 .break-countdown-track{background:#fecaca!important}
+.break-countdown.over15 .break-countdown-track span{background:#dc2626!important}
+body.dark-mode .break-countdown.over15{background:#3b1118!important;border-color:#ef4444!important;color:#fee2e2!important}
+body.dark-mode .break-countdown.over15 .break-countdown-head,
+body.dark-mode .break-countdown.over15 #breakCountdownTime,
+body.dark-mode .break-countdown.over15 #breakCountdownHelp{color:#fee2e2!important}
+body.dark-mode .break-countdown.over15 .break-countdown-track{background:#641b24!important}
+body.dark-mode .break-countdown.over15 .break-countdown-track span{background:#ef4444!important}
 </style>
 </head>
 <body><div id="updateNotice" role="status" aria-live="polite"><div><strong>myTIME update available</strong><br><small>Save any changes, then reload to use the latest version.</small></div><button type="button" id="applyUpdateBtn">Update myTIME</button></div><main class="shell">
@@ -880,7 +894,7 @@ function day(){return data[todayKey()]||(data[todayKey()]={punches:[],audit:[]})
  $('breakCountdownTime').textContent=String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0');
  $('breakCountdownBar').style.width=percent+'%';
  $('breakCountdownProgress').setAttribute('aria-valuenow',String(Math.round(percent)));
- box.classList.toggle('overdue',remaining===0);
+ box.classList.toggle('overdue',remaining===0);box.classList.toggle('over15',!!active&&elapsed>=duration);
  $('breakCountdownHelp').textContent=remaining>0?'Time remaining in your '+(active?'15-minute paid break':'scheduled lunch')+'. The bar fills as time passes.':"Scheduled break time has elapsed. End your break when you return.";
 }
 setInterval(updateBreakCountdown,1000);
