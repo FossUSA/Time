@@ -656,6 +656,18 @@ input,select,textarea{min-width:0;max-width:100%}
 @media(max-width:1100px){.hero{grid-template-columns:minmax(0,1fr) minmax(260px,.85fr)}.layout{grid-template-columns:minmax(0,1fr)}.grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}.top-actions{gap:8px}}
 @media(max-width:720px){.shell{padding:12px 12px 28px}.top{align-items:stretch;gap:12px}.brand{align-items:center}.top-actions{width:100%;justify-content:flex-start}.hero{grid-template-columns:minmax(0,1fr);padding:18px;border-radius:18px}.punchpanel{padding:15px}.grid{grid-template-columns:minmax(0,1fr)}.layout{grid-template-columns:minmax(0,1fr)}.formrow,.profile-fields,.bank-form{grid-template-columns:minmax(0,1fr)}.schedule-list,.suggestion-list{grid-template-columns:minmax(0,1fr)}.section-head{align-items:flex-start}.metric{font-size:clamp(23px,7vw,32px)}.clock{font-size:clamp(38px,12vw,64px)}.footer{flex-direction:column}.weekly-overtime-alert{padding:13px}.mytime-calendar-grid{min-width:620px}}
 @media(max-width:400px){.brand{gap:8px}.foss-logo{width:104px;max-width:29vw}.brand strong{font-size:16px}.profile-trigger{max-width:100%;white-space:normal}.hero{padding:14px}.card{padding:13px}.event{grid-template-columns:62px 10px minmax(0,1fr);gap:7px}.mytime-calendar-grid{min-width:590px}}
+
+/* Header parity fix: override every earlier dark-theme header rule. */
+body.dark-mode header.top,
+body.dark-mode .top {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  outline: 0 !important;
+}
 </style>
 </head>
 <body><div id="updateNotice" role="status" aria-live="polite"><div><strong>myTIME update available</strong><br><small>Save any changes, then reload to use the latest version.</small></div><button type="button" id="applyUpdateBtn">Update myTIME</button></div><main class="shell">
@@ -1894,6 +1906,3 @@ renderRecordManager();
 })();
 </script>
 </body></html>
-
-/* Keep the logo/header row visually consistent in both themes: no dark-only header box. */
-body.dark-mode .top{background:transparent;border:0;box-shadow:none;border-radius:0;padding:0}
