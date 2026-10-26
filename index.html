@@ -638,6 +638,24 @@ body.dark-mode.weekly-overtime-exceeded .hero{border-color:#ff5c69}
 /* The live clock must only use alert red after weekly paid time exceeds 40 hours. */
 body:not(.weekly-overtime-exceeded) .hero .clock{color:#fff!important;text-shadow:none!important}
 body.dark-mode:not(.weekly-overtime-exceeded) .hero .clock{color:#fff!important;text-shadow:none!important}
+
+/* Adaptive layout polish: prevent cramped grids, overlapping controls, and clipped text. */
+:root{--page-gutter:clamp(12px,2.4vw,40px)}
+.shell{padding-left:var(--page-gutter);padding-right:var(--page-gutter)}
+.top,.top-actions,.section-head,.week-tools,.settings-actions,.profile-actions{min-width:0;flex-wrap:wrap}
+.brand,.top-actions,.card,.hero>div,.layout>*,.grid>*{min-width:0}
+.brand small,.sub,.notice,.clock-work-guidance,.weekly-overtime-alert,.weekly-overtime-alert span{overflow-wrap:anywhere;word-break:normal}
+.grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.layout{grid-template-columns:repeat(2,minmax(0,1fr))}
+.formrow,.profile-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.schedule-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr))}
+.suggestion-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+button{white-space:normal;overflow-wrap:anywhere}
+input,select,textarea{min-width:0;max-width:100%}
+.tablewrap,.mytime-calendar-wrap{max-width:100%;overscroll-behavior-x:contain}
+@media(max-width:1100px){.hero{grid-template-columns:minmax(0,1fr) minmax(260px,.85fr)}.layout{grid-template-columns:minmax(0,1fr)}.grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}.top-actions{gap:8px}}
+@media(max-width:720px){.shell{padding:12px 12px 28px}.top{align-items:stretch;gap:12px}.brand{align-items:center}.top-actions{width:100%;justify-content:flex-start}.hero{grid-template-columns:minmax(0,1fr);padding:18px;border-radius:18px}.punchpanel{padding:15px}.grid{grid-template-columns:minmax(0,1fr)}.layout{grid-template-columns:minmax(0,1fr)}.formrow,.profile-fields,.bank-form{grid-template-columns:minmax(0,1fr)}.schedule-list,.suggestion-list{grid-template-columns:minmax(0,1fr)}.section-head{align-items:flex-start}.metric{font-size:clamp(23px,7vw,32px)}.clock{font-size:clamp(38px,12vw,64px)}.footer{flex-direction:column}.weekly-overtime-alert{padding:13px}.mytime-calendar-grid{min-width:620px}}
+@media(max-width:400px){.brand{gap:8px}.foss-logo{width:104px;max-width:29vw}.brand strong{font-size:16px}.profile-trigger{max-width:100%;white-space:normal}.hero{padding:14px}.card{padding:13px}.event{grid-template-columns:62px 10px minmax(0,1fr);gap:7px}.mytime-calendar-grid{min-width:590px}}
 </style>
 </head>
 <body><div id="updateNotice" role="status" aria-live="polite"><div><strong>myTIME update available</strong><br><small>Save any changes, then reload to use the latest version.</small></div><button type="button" id="applyUpdateBtn">Update myTIME</button></div><main class="shell">
@@ -926,28 +944,68 @@ function updateWeeklyOvertimeAlert(now=Date.now()){
  const alert=$('weeklyOvertimeAlert'),title=$('weeklyOvertimeTitle'),message=$('weeklyOvertimeMessage'),plan=$('weeklyPlanPanel'),planTitle=$('weeklyPlanTitle'),planMessage=$('weeklyPlanMessage');
  if(!alert||!title||!message)return;
  const date=new Date(now),dayIndex=(date.getDay()+6)%7,monday=new Date(date.getFullYear(),date.getMonth(),date.getDate()-dayIndex);monday.setHours(0,0,0,0);
- const weekKeys=[];for(let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);weekKeys.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))}
+ const weekKeys=[];for(let i=0;i<5;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);weekKeys.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))}
  let total=0;for(const key of weekKeys){const rec=data[key];if(!rec)continue;const end=key===todayKey()?now:Math.min(now,new Date(key+'T23:59:59').getTime());if(end>new Date(key+'T00:00:00').getTime())total+=paidMs(rec,end)}
  const limit=40*3600000,over=Math.max(0,total-limit),exceeded=over>0;document.body.classList.toggle('weekly-overtime-exceeded',exceeded);alert.hidden=!exceeded;
  const fmt=ms=>{const n=Math.floor(Math.max(0,ms)/60000);return (Math.floor(n/60)?Math.floor(n/60)+' hr ':'')+(n%60)+' min'};
- if(exceeded){title.textContent='40-hour weekly limit exceeded';message.textContent='You are '+fmt(over)+' over 40 paid hours this week. Total: '+fmt(total)+'.';}
+ const todayRecord=data[todayKey()],todayPaid=todayRecord?paidMs(todayRecord,now):0;
+ if(exceeded){title.textContent='40-hour weekly limit exceeded';message.textContent='You are '+fmt(over)+' over 40 paid hours this week. Total paid time so far: '+fmt(total)+'.';}
  else{title.textContent='40-hour weekly limit';message.textContent='You have '+fmt(limit-total)+' of paid time remaining before 40 hours.'}
  if(plan&&planTitle&&planMessage){
-  let futureDays=0;for(let i=dayIndex+1;i<5;i++)futureDays++;
-  const scheduledPerDay=Math.max(0,Number(settings.goalHours||8))*3600000;
-  const projected=total+futureDays*scheduledPerDay;
-  const hasClockIn=(day().punches||[]).some(x=>x.type==='in');
-  if(projected>limit&&dayIndex<5&&hasClockIn){
-   const remainingToday=Math.max(0,limit-total-futureDays*scheduledPerDay);
-   const suggested=new Date(now+remainingToday);
-   plan.hidden=false;planTitle.textContent='Projected weekly overtime · action needed';
-   planMessage.textContent='At your current hours plus '+futureDays+' remaining weekday(s) at '+(settings.goalHours||8)+' scheduled hours each, you are projected to reach '+fmt(projected)+'. To target 40 hours, your estimated clock-out today is '+fmtTime(suggested.getTime())+'. '+(remainingToday===0?'You have already used the hours available for today if you want to stay at 40.':'This estimate assumes no additional unpaid breaks or schedule changes. Check your punches before leaving.');
+  const goalHours=Math.max(0,Number(settings.goalHours||8)),scheduledPerDay=goalHours*3600000;
+  let pastPaid=0;for(let i=0;i<Math.min(dayIndex,5);i++){const rec=data[weekKeys[i]];if(rec)pastPaid+=paidMs(rec,Math.min(now,new Date(weekKeys[i]+'T23:59:59').getTime()))}
+  let futureDays=0;for(let i=Math.max(0,dayIndex+1);i<5;i++)futureDays++;
+  const todayHasOut=!!(todayRecord&&getOut(todayRecord));
+  const todayForecast=dayIndex>=5?todayPaid:(todayHasOut?todayPaid:Math.max(todayPaid,scheduledPerDay));
+  const projected=pastPaid+todayForecast+futureDays*scheduledPerDay;
+  const active=!!(todayRecord&&(todayRecord.punches||[]).some(x=>x.type==='in')&&!getOut(todayRecord));
+  if(dayIndex<5&&projected>limit&&(!todayHasOut||exceeded)){
+   const remainingToday=Math.max(0,limit-pastPaid-futureDays*scheduledPerDay-todayPaid);
+   let unpaidLunchToCome=0;
+   if(active){
+    const punches=todayRecord.punches||[],lunchStarted=punches.some(x=>x.type==='lunch-start'),lunchEnded=punches.some(x=>x.type==='lunch-end');
+    const plannedLunch=Math.max(0,parseTime(settings.lunchEnd)-parseTime(settings.lunchStart))*60000;
+    if(lunchStarted&&!lunchEnded)unpaidLunchToCome=Math.max(0,plannedLunch-lunchMs(todayRecord,now));
+    else if(!lunchStarted&&now<new Date(new Date(now).setHours(parseTime(settings.lunchStart)/60,parseTime(settings.lunchStart)%60,0,0)).getTime())unpaidLunchToCome=plannedLunch;
+   }
+   const suggested=new Date(now+remainingToday+unpaidLunchToCome);
+   plan.hidden=false;
+   if(exceeded){planTitle.textContent='Overtime already accrued · weekly limit exceeded';planMessage.textContent='You are '+fmt(over)+' over 40 hours already. Your scheduled daily finish is '+settings.endTime+'. '+(active?'If you keep working, additional paid time adds to this overage.':'Review the day you crossed 40 hours to see when the weekly limit was reached.')+' Forecast for the week: '+fmt(projected)+'.';}
+   else{planTitle.textContent='Projected weekly overtime · suggested clock-out';planMessage.textContent='If you complete '+futureDays+' remaining weekday shift(s) at '+goalHours+' paid hours each, the week is projected to total '+fmt(projected)+' ('+fmt(Math.max(0,projected-limit))+' over 40). '+(active?'To stay at or under 40 hours, your estimated clock-out today is '+fmtTime(suggested.getTime())+'. ':'Your estimated paid-hour budget for today is '+fmt(Math.max(0,limit-pastPaid-futureDays*scheduledPerDay))+'. ')+ 'Your normal scheduled end is '+settings.endTime+'. This forecast uses actual completed punches and planned future shifts; adjust it if your schedule changes.';
+   }
   }else if(exceeded){
-   plan.hidden=false;planTitle.textContent='Weekly overtime already accumulated';planMessage.textContent='Your paid time is already '+fmt(over)+' over 40 hours. To find the exact clock-out time that would have kept you at 40, review your punches for the day the weekly total crossed the limit.';
-  }else plan.hidden=true;
+   plan.hidden=false;planTitle.textContent='Weekly overtime already accumulated';planMessage.textContent='You are '+fmt(over)+' over 40 paid hours so far. Your normal scheduled end time is '+settings.endTime+'. The weekly limit was crossed during an earlier shift; review that day’s punches for the exact crossing time.';
+  }else{
+   plan.hidden=false;planTitle.textContent='Weekly hours forecast';planMessage.textContent='Projected total by Friday: '+fmt(projected)+'. '+(active?'Your daily paid-hours target is '+goalHours+' hours; estimated daily finish is shown below.':'Normal scheduled end time: '+settings.endTime+'.')+' The forecast updates as punches are recorded.';
+  }
  }
 }
-function updateClockWorkGuidance(now=Date.now()){const box=$('clockWorkGuidance'),title=$('clockWorkGuidanceTitle'),text=$('clockWorkGuidanceText');if(!box||!title||!text)return;const fmt=ms=>{const m=Math.floor(Math.max(0,ms)/60000);return (Math.floor(m/60)?Math.floor(m/60)+' hr ':'')+(m%60)+' min'};const fmtTime=ts=>new Date(ts).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});const d=new Date(now),idx=(d.getDay()+6)%7,monday=new Date(d.getFullYear(),d.getMonth(),d.getDate()-idx);monday.setHours(0,0,0,0);let total=0;for(let i=0;i<7;i++){const dt=new Date(monday);dt.setDate(monday.getDate()+i);const key=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');const rec=data[key];if(rec)total+=paidMs(rec,key===todayKey()?now:Math.min(now,new Date(key+'T23:59:59').getTime()))}const limit=40*3600000,over=total-limit;const punches=day().punches||[];const active=punches.some(x=>x.type==='in')&&!punches.some(x=>x.type==='out');let html='Week total: '+fmt(total)+'. ';if(over>0)html+='Overtime so far: '+fmt(over)+'.';else html+=fmt(limit-total)+' until 40 hours.';if(active){const remainingToday=Math.max(0,limit-total);const end=new Date(now+remainingToday);html+=' Projected clock-out to reach 40 hours: '+fmtTime(end.getTime())+'.';const start=punches.find(x=>x.type==='in');const expected=new Date(start.ts);expected.setHours(parseTime(settings.endTime)/60,parseTime(settings.endTime)%60,0,0);html+=' Scheduled end time: '+fmtTime(expected.getTime())+'.';if(over>0)html+=' You have already exceeded 40 hours; consider ending at your scheduled time and review your punches.';}title.textContent=over>0?'Weekly overtime: '+fmt(over):'Today & weekly hours';text.textContent=html;box.style.background=over>0?'rgba(220,38,38,.2)':'rgba(255,255,255,.12)';box.style.color='inherit'}
+function updateClockWorkGuidance(now=Date.now()){
+ const box=$('clockWorkGuidance'),title=$('clockWorkGuidanceTitle'),text=$('clockWorkGuidanceText');if(!box||!title||!text)return;
+ const fmt=ms=>{const m=Math.floor(Math.max(0,ms)/60000);return (Math.floor(m/60)?Math.floor(m/60)+' hr ':'')+(m%60)+' min'};
+ const fmtTime=ts=>new Date(ts).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+ const d=new Date(now),idx=(d.getDay()+6)%7,monday=new Date(d.getFullYear(),d.getMonth(),d.getDate()-idx);monday.setHours(0,0,0,0);
+ let total=0,past=0,futureDays=0;for(let i=0;i<5;i++){const dt=new Date(monday);dt.setDate(monday.getDate()+i);const key=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');const rec=data[key];if(rec){const val=paidMs(rec,key===todayKey()?now:Math.min(now,new Date(key+'T23:59:59').getTime()));total+=val;if(i<idx)past+=val;}if(i>idx)futureDays++}
+ const limit=40*3600000,over=Math.max(0,total-limit),punches=day().punches||[],active=punches.some(x=>x.type==='in')&&!punches.some(x=>x.type==='out');
+ const todayPaid=paidMs(day(),now),goal=Math.max(0,Number(settings.goalHours||8)),todayFinish=projectedFinish();
+ const expectedEnd=new Date(now);expectedEnd.setHours(parseTime(settings.endTime)/60,parseTime(settings.endTime)%60,0,0);
+ const scheduledPerDay=goal*3600000,allowedToday=Math.max(0,limit-past-futureDays*scheduledPerDay-todayPaid);
+ let html='Week paid time: '+fmt(total)+'. ';
+ html+=over>0?'Overtime so far: '+fmt(over)+'. ':'Remaining before 40 hours: '+fmt(limit-total)+'. ';
+ html+='Normal scheduled end: '+fmtTime(expectedEnd.getTime())+'. ';
+ if(todayFinish)html+='Daily target finish (to reach '+goal+' paid hours): '+fmtTime(todayFinish.getTime())+'. ';
+ if(active){
+  let lunchExtra=0;const lunchStarted=punches.some(x=>x.type==='lunch-start'),lunchEnded=punches.some(x=>x.type==='lunch-end'),plannedLunch=Math.max(0,parseTime(settings.lunchEnd)-parseTime(settings.lunchStart))*60000;
+  if(lunchStarted&&!lunchEnded)lunchExtra=Math.max(0,plannedLunch-lunchMs(day(),now));
+  else if(!lunchStarted&&now<new Date(new Date(now).setHours(parseTime(settings.lunchStart)/60,parseTime(settings.lunchStart)%60,0,0)).getTime())lunchExtra=plannedLunch;
+  const safeEnd=new Date(now+allowedToday+lunchExtra);
+  if(over>0)html+='The 40-hour limit has already been exceeded; any additional paid time increases overtime.';
+  else if(futureDays>0&&past+todayPaid+futureDays*scheduledPerDay>limit)html+='To keep the full-week forecast at or below 40 hours, estimated clock-out today is '+fmtTime(safeEnd.getTime())+'.';
+  else html+='Projected weekly total with planned shifts: '+fmt(past+Math.max(todayPaid,scheduledPerDay)+futureDays*scheduledPerDay)+'.';
+ }
+ title.textContent=over>0?'Weekly overtime: '+fmt(over):'Daily finish & weekly forecast';
+ text.textContent=html;box.style.background=over>0?'rgba(220,38,38,.2)':'rgba(255,255,255,.12)';box.style.color='inherit';
+}
 function updateLiveClock(){
  const clock=$('liveClock'),date=$('liveDate'),tz=$('timezoneLabel');
  if(!clock||!date)return;
