@@ -1,0 +1,8 @@
+name = "foss-mytime-pages"
+pages_build_output_dir = "./"
+compatibility_date = "2026-10-26"
+
+[[d1_databases]]
+binding = "MYTIME_DB"
+database_name = "foss-mytime-sync"
+database_id = "73dde185-64af-40c6-89cd-555125825665"
