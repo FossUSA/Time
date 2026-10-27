@@ -888,14 +888,14 @@ function day(){return data[todayKey()]||(data[todayKey()]={punches:[],audit:[]})
  }
  if(!start||!duration){box.hidden=true;box.classList.remove('overdue');return}
  box.hidden=false;
- const elapsed=Math.max(0,Date.now()-start),remaining=Math.max(0,duration-elapsed),percent=Math.min(100,elapsed/duration*100);
- const mins=Math.floor(remaining/60000),secs=Math.floor((remaining%60000)/1000);
- $('breakCountdownTitle').textContent=title+' · countdown';
- $('breakCountdownTime').textContent=String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0');
+ const elapsed=Math.max(0,Date.now()-start),remaining=duration-elapsed,over=elapsed-duration,percent=Math.min(100,elapsed/duration*100);
+ const shown=Math.abs(remaining),mins=Math.floor(shown/60000),secs=Math.floor((shown%60000)/1000),clock=String(mins).padStart(2,'0')+':'+String(secs).padStart(2,'0');
+ $('breakCountdownTitle').textContent=title+(remaining>0?' · countdown':' · overage');
+ $('breakCountdownTime').textContent=remaining>0?clock:(!!active?'OVER +'+clock: 'OVER +'+clock);
  $('breakCountdownBar').style.width=percent+'%';
  $('breakCountdownProgress').setAttribute('aria-valuenow',String(Math.round(percent)));
- box.classList.toggle('overdue',remaining===0);box.classList.toggle('over15',!!active&&elapsed>=duration);
- $('breakCountdownHelp').textContent=remaining>0?'Time remaining in your '+(active?'15-minute paid break':'scheduled lunch')+'. The bar fills as time passes.':"Scheduled break time has elapsed. End your break when you return.";
+ box.classList.toggle('overdue',remaining<=0);box.classList.toggle('over15',!!active&&remaining<=0);
+ $('breakCountdownHelp').textContent=remaining>0?'Time remaining in your '+(active?'15-minute paid break':'scheduled lunch')+'. The bar fills as time passes.':(active?'Your break is '+clock+' over 15 minutes. The timer keeps counting until you end the break.':'Your lunch is '+clock+' over its scheduled duration. The timer keeps counting until you end lunch.');
 }
 setInterval(updateBreakCountdown,1000);
 const REMINDER_PREF_KEY='foss-time-desktop-reminders-v1';
