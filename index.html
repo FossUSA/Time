@@ -1705,11 +1705,11 @@ renderRecordManager();
    window.addEventListener('load',async()=>{
     try{const reg=await navigator.serviceWorker.register('/sw.js');if(reg.waiting)announce();
      reg.addEventListener('updatefound',()=>{const worker=reg.installing;if(!worker)return;worker.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)announce()})});
-     setInterval(()=>reg.update().catch(()=>{}),60000);
+     setInterval(()=>reg.update().catch(()=>{}),30000);
     }catch{}
    });
   }
-  window.addEventListener('load',()=>{checkPage();setInterval(checkPage,60000)});
+  window.addEventListener('load',()=>{checkPage();setInterval(checkPage,30000)});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkPage()});
  })();
  
