@@ -747,11 +747,11 @@ body.dark-mode .break-countdown.over15 .break-countdown-track span{background:#e
   <div>
    <div class="integration-eyebrow">FOSS myTIME · CONNECTIONS</div>
    <h2 id="integrationHeading">Integrations</h2>
-   <p>Choose how myTIME can share your timecard. Your records stay in this browser unless you explicitly export them or send them to a service.</p>
+   <p>Connect the services that support your workflow. Cloudflare Access sign-in and cloud record sync are separate from Google and Microsoft OAuth connections.</p>
   </div>
   <div class="integration-hero-mark" aria-hidden="true"><span>↗</span><small>CONNECT<br>WITH CARE</small></div>
  </div>
- <div class="integration-statusbar"><span class="integration-status-dot"></span><div><strong>Local-only mode</strong><p>Google and Microsoft sign-in are not configured. Webhook sending is available when you provide your own trusted HTTPS endpoint.</p></div><span class="tag">NOT CONNECTED</span></div>
+ <div class="integration-statusbar"><span class="integration-status-dot"></span><div><strong>Account integrations · OAuth not configured</strong><p>Google Workspace and Microsoft 365 direct sign-in are not configured. Cloudflare Access login and cloud-record sync operate separately; check the save-status indicator at the top of myTIME for your current cloud connection.</p></div><span class="tag">OAUTH NOT CONFIGURED</span></div>
  <div class="integration-section-title"><div><span class="metric-label">ACCOUNT CONNECTIONS</span><h3>Connect your work tools</h3></div><span class="sub">Requires administrator-approved setup</span></div>
  <div class="integration-provider-grid">
   <article class="integration-provider">
@@ -769,12 +769,12 @@ body.dark-mode .break-countdown.over15 .break-countdown-track span{background:#e
  </div>
  <section class="card" style="margin:14px 0" aria-labelledby="automationGuideHeading">
   <div class="section-head"><div><span class="metric-label">AUTOMATION STARTER</span><h3 id="automationGuideHeading" style="margin:4px 0">Use your existing Google or Microsoft tools</h3></div><span class="tag">NO SIGN-IN CLAIMS</span></div>
-  <p class="sub">For Power Automate, myTIME sends your selected timecard payload through a same-origin Cloudflare Pages Function. This avoids browser CORS problems; the flow URL stays in this browser and is only forwarded with the request. The receiver is restricted to Microsoft Power Automate / Azure Logic Apps HTTPS hostnames. A Google Apps Script web app or another HTTPS webhook can still be selected as a generic receiver.</p>
+  <p class="sub">For Power Automate, myTIME sends your selected timecard payload through a same-origin Cloudflare Pages Function. This avoids browser CORS problems; the flow URL stays in this browser and is only forwarded with the request. The receiver is restricted to Microsoft Power Automate / Azure Logic Apps HTTPS hostnames. A Google Apps Script web app or another HTTPS webhook can still be selected as a generic receiver. This webhook connection does not require Google or Microsoft OAuth sign-in.</p>
   <div class="settings-actions">
    <a class="quiet" style="display:inline-block;text-decoration:none;border-radius:10px;padding:10px 13px;font-weight:700" href="https://developers.google.com/apps-script/guides/web" target="_blank" rel="noopener noreferrer">Google Apps Script guide ↗</a>
    <a class="quiet" style="display:inline-block;text-decoration:none;border-radius:10px;padding:10px 13px;font-weight:700" href="https://learn.microsoft.com/en-us/power-automate/" target="_blank" rel="noopener noreferrer">Power Automate guide ↗</a>
   </div>
-  <p class="notice">Account sign-in, direct Gmail/Outlook sending, and cloud sync are not active until an authorized endpoint or secure OAuth backend is configured. Do not paste passwords or API secrets into this page.</p>
+  <p class="notice"><strong>Connection notes:</strong> Google and Microsoft OAuth sign-in and direct Gmail/Outlook API sending are not enabled. Cloudflare Access can still authenticate myTIME users and protect cloud records through the separate <code>/api/records</code> service when the Cloudflare D1 binding is configured. Use the save-status indicator at the top of the app to confirm whether this device is currently cloud-saved or local-only. Webhook delivery is separate and requires a trusted HTTPS receiver. Never paste passwords or API secrets into this page.</p>
  </section>
  <div class="integration-section-title integration-manual-title"><div><span class="metric-label">MANUAL CONNECTION</span><h3>Webhook delivery</h3><p>Send a report or selected time records to a webhook you control. This is separate from Google or Microsoft sign-in.</p></div><span class="tag">USER CONTROLLED</span></div>
  <section class="webhook-card" id="webhookPanel" aria-labelledby="webhookPanelHeading">
