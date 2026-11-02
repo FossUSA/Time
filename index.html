@@ -1684,10 +1684,8 @@ renderRecordManager();
    try{
     const r=await fetch('/index.html?mytime-update-check='+Date.now(),{method:'GET',cache:'no-store',credentials:'same-origin'});
     if(!r.ok)return '';
-    const etag=r.headers.get('etag')||r.headers.get('last-modified');
     const html=await r.text();
-    if(etag)return etag;
-    // Some CDN responses omit validators; hash the HTML so deployments are still detected.
+    // Hash the actual deployed page: CDN validators can remain unchanged across cached responses.
     let hash=2166136261;for(let i=0;i<html.length;i++){hash^=html.charCodeAt(i);hash=Math.imul(hash,16777619)}
     return 'html-'+(hash>>>0).toString(16);
    }catch{return ''}
