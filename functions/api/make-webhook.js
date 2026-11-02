@@ -1,4 +1,4 @@
-export async function onRequestPost({ request }) {
+export async function onRequestPost({ request, env }) {
   const origin = request.headers.get("Origin");
   if (!origin) return json({ error: "Missing origin" }, 403);
   let originUrl;
@@ -13,12 +13,16 @@ export async function onRequestPost({ request }) {
   if (length > 1_000_000) return json({ error: "Payload too large" }, 413);
   let body;
   try { body = await request.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
-  if (!body || typeof body.url !== "string" || !body.payload || typeof body.payload !== "object") {
-    return json({ error: "Expected url and payload" }, 400);
+  if (!body || !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)) {
+    return json({ error: "Expected a JSON payload" }, 400);
   }
+  const configuredUrl = typeof env?.MYTIME_MAKE_WEBHOOK_URL === "string" ? env.MYTIME_MAKE_WEBHOOK_URL : "";
+  const suppliedUrl = typeof body.url === "string" ? body.url : "";
+  const targetValue = suppliedUrl || configuredUrl;
+  if (!targetValue) return json({ error: "The managed Make connection is not configured on this deployment." }, 503);
   let target;
-  try { target = new URL(body.url); } catch { return json({ error: "Invalid webhook URL" }, 400); }
-  if (target.protocol !== "https:" || !["hook.us2.make.com", "hook.make.com"].includes(target.hostname) || target.username || target.password) {
+  try { target = new URL(targetValue); } catch { return json({ error: "Invalid configured Make webhook" }, 500); }
+  if (target.protocol !== "https:" || !["hook.us2.make.com", "hook.make.com"].includes(target.hostname) || target.username || target.password || target.search || target.hash) {
     return json({ error: "Only official Make.com webhook URLs are allowed" }, 400);
   }
   try {
@@ -28,7 +32,7 @@ export async function onRequestPost({ request }) {
       body: JSON.stringify(body.payload)
     });
     if (!upstream.ok) return json({ error: "Make.com returned HTTP " + upstream.status }, 502);
-    return json({ ok: true, status: upstream.status });
+    return json({ ok: true, provider: "make", accepted: true, status: upstream.status, message: "Make accepted the payload; check the scenario run and mailbox for final delivery." });
   } catch {
     return json({ error: "Could not reach Make.com" }, 502);
   }
