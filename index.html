@@ -1497,7 +1497,7 @@ function renderMyTimeCalendar(){
    if(note){const line=document.createElement('small');line.className='calendar-day-recovery';line.textContent='Make-up logged';cell.appendChild(line)}
    if(outTime!=='—'){const line=document.createElement('small');line.className='calendar-day-punches';line.textContent='Out '+outTime;cell.appendChild(line)}
    if(lunchOut!=='—'||lunchIn!=='—'){const line=document.createElement('small');line.className='calendar-day-lunch';line.textContent='Lunch '+(lunchOut==='—'?'—':lunchOut)+' / '+(lunchIn==='—'?'—':lunchIn);cell.appendChild(line)}
-   const paid=document.createElement('small');const paidMinutes=actualPaidMinutes(rec);paid.className='calendar-day-paid'+(paidMinutes>480?' is-over-eight':'');paid.textContent=calendarPaid(k)+' paid';cell.appendChild(paid);if(paidMinutes>480){const over=document.createElement('small');over.className='calendar-day-overtime';over.textContent='Over 8h by '+fmtMin(paidMinutes-480);cell.appendChild(over)}
+   const paid=document.createElement('small');const paidMinutes=actualPaidMinutes(rec);paid.className='calendar-day-paid'+(paidMinutes>480?' is-over-eight':'');paid.textContent='Total paid: '+calendarPaid(k);cell.appendChild(paid);if(paidMinutes>480){const over=document.createElement('small');over.className='calendar-day-overtime';over.textContent='Over daily target: +'+fmtMin(paidMinutes-480);cell.appendChild(over)}
    const breaks=document.createElement('small');breaks.className='calendar-day-breaks';breaks.textContent='Breaks: '+statusText;cell.appendChild(breaks);
   } else {const noData=document.createElement('small');noData.className='calendar-no-record';noData.textContent='No punches';cell.appendChild(noData)}
   if(planned>0){const plan=document.createElement('small');plan.className='calendar-day-planned';plan.textContent='Planned '+fmtMin(planned);cell.appendChild(plan)}
@@ -1567,7 +1567,7 @@ function renderCalendarIntervalAnalysis(k,rec){
  });
  const planned=Math.max(0,plannedMinutes(schedule)),out=[...p].reverse().find(x=>x.type==='out'),last=p[p.length-1];
  const paid=p.length?paidMs(rec,out?.ts||(k===todayKey()?Date.now():last?.ts||Date.now()))/60000:null;
- add('Paid work time',paid,planned,'Actual paid time compared with planned daily hours',paid===null);
+ add('Total paid time',paid,planned,'Daily target: '+fmtMin(planned)+' · This is total paid time, not the amount over target',paid===null);
 }
 function calendarDateKeys(scope){
  const first=new Date(myTimeCalendarMonth.getFullYear(),myTimeCalendarMonth.getMonth(),1,12),count=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
