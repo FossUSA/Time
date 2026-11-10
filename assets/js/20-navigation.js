@@ -159,6 +159,8 @@ async function confirmCalendarBreakSave(dateKey){
   if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Cloudflare verified · revision '+Number(payload.revision||0);
   const status=document.getElementById('saveStatusText');
   if(status&&window.myTimeAutoCloudConnected)status.textContent='Cloud saved · '+dateKey+' verified';
+  if(typeof renderRecordManager==='function')renderRecordManager();
+  if(typeof renderMonth==='function')renderMonth();
   return true;
  }catch(error){
   console.warn('myTIME break/lunch read-back verification failed:',error);

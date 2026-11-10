@@ -64,6 +64,9 @@ assert(calendarUi.includes("function calendarBreakSummary"), "Documented break e
 assert(calendarUi.includes("calendarBreakSummary(rec,true)"), "The Records manager must display documented break entries.");
 assert(calendarUi.includes("Lunch record start") && calendarUi.includes("Lunch record end"), "CSV export must include separate documented lunch times.");
 assert(calendarUi.includes("calendar-print-breaks"), "Printed calendars must display documented break entries separately from punches.");
+assert(read("assets/js/10-app-core.js").includes("calendarBreakSummary(r,true)"), "Dashboard monthly records must display the saved lunch and break documentation.");
+assert(read("index.html").includes("Documented lunch &amp; breaks"), "Monthly and Records views must label documentary break records separately from punches.");
+assert(nav.includes("hasDocumentedBreakRecord(rec)"), "Calendar must include days with documented breaks even when they have no punches.");
 assert(pkg.scripts?.test, "Repository test script is missing.");
 
 console.log("myTIME audit passed: browser assets, syntax, Access auth, D1 revision guards, webhook routing, and service-worker policy.");
