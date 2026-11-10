@@ -21,7 +21,7 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.0"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.2.1"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
 assert(sw.includes("foss-mytime-shell-v5"), "Service worker cache version is not updated.");
