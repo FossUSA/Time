@@ -914,6 +914,36 @@ function setCloudStartupGate(loaded,message='Loading your timecard from Cloudfla
  if(retry)retry.hidden=!/could not load|unavailable|failed/i.test(message);
 }
 function setSaveStatus(ok,message){const root=$('saveStatus'),label=$('saveStatusText');if(!root||!label)return;root.classList.toggle('save-status-error',!ok);root.classList.toggle('save-status-ok',!!ok);label.textContent=message;root.title=ok?'Confirmed saved in your Cloudflare D1 account.':'Not confirmed in Cloudflare. Your browser copy is only temporary recovery data.'}
+let cloudAuthRequired=false;
+const MYTIME_ACCESS_LOGIN='/cdn-cgi/access/login/be13baf6dd40cfd1cbb67658f27069c13b65ada283abe5e93ed1c6bcbacb3ee5';
+async function cloudRequest(path,options){
+ const response=await fetch(path,{...options,redirect:'manual'});
+ const contentType=String(response.headers.get('content-type')||'').toLowerCase();
+ if(response.status===401||response.status===403||response.status===302||response.type==='opaqueredirect'||response.redirected||contentType.includes('text/html')){
+  cloudAuthRequired=true;
+  const error=new Error('Your Cloudflare Access session needs to be renewed. Pending changes are being kept in this browser.');
+  error.authRequired=true;error.status=response.status;throw error;
+ }
+ let body=null;
+ try{body=await response.json()}catch{
+  const error=new Error('Cloudflare returned a response that was not valid JSON (HTTP '+response.status+').');
+  error.status=response.status;error.retryable=response.status>=500||response.status===0;throw error;
+ }
+ if(!body||typeof body!=='object'){
+  const error=new Error('Cloudflare returned an empty or invalid response (HTTP '+response.status+').');
+  error.status=response.status;error.retryable=response.status>=500||response.status===0;throw error;
+ }
+ if(response.status!==409&&!body.conflict&&(!response.ok||body.ok!==true)){
+  const error=new Error(String(body.error||('Cloudflare request failed (HTTP '+response.status+').')).slice(0,260));
+  error.status=response.status;error.retryable=response.status>=500||response.status===408||response.status===429||response.status===0;throw error;
+ }
+ cloudAuthRequired=false;
+ return {response,body};
+}
+function startMyTimeAccessLogin(){
+ setSaveStatus(false,'Sign-in required · reconnect to Cloudflare to save pending changes');
+ window.location.assign(MYTIME_ACCESS_LOGIN);
+}
 function cloneCloudValue(value){return value===undefined?undefined:JSON.parse(JSON.stringify(value))}
 function cloudValueEqual(a,b){return JSON.stringify(a)===JSON.stringify(b)}
 function isCloudObject(value){return !!value&&typeof value==='object'&&!Array.isArray(value)}
@@ -967,14 +997,11 @@ async function syncCloudNow(){
  try{
   let payload=cloneCloudValue(cloudPayload());
   for(let attempt=0;attempt<4;attempt++){
-   const r=await fetch('/api/records',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({payload,expectedRevision:cloudRevision})});
-   const j=await r.json().catch(()=>({}));
+   const {response:r,body:j}=await cloudRequest('/api/records',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({payload,expectedRevision:cloudRevision})});
    if(r.status===409||j.conflict){
     if(attempt===3)throw new Error('Cloud kept changing while saving. Your edits are still here; automatic retry is scheduled.');
     setSaveStatus(false,'Cloud updated elsewhere · merging changes safely…');
-    const latestResponse=await fetch('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
-    const latest=await latestResponse.json().catch(()=>({}));
-    if(!latestResponse.ok||!latest.ok)throw new Error(latest.error||'Could not reload the latest Cloudflare data for a safe merge.');
+    const {body:latest}=await cloudRequest('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
     const remote=latest.payload&&typeof latest.payload==='object'?latest.payload:emptyCloudPayload();
     const localNow=cloneCloudValue(cloudPayload());
     const rebased=mergeCloudPayload(cloudBasePayload||emptyCloudPayload(),localNow,remote);
@@ -997,13 +1024,25 @@ async function syncCloudNow(){
  }catch(e){
   window.myTimeAutoCloudConnected=false;
   cloudSyncDirty=true;
+  const root=$('saveStatus'),label=$('saveStatusText');
+  if(e?.authRequired||cloudAuthRequired){
+   cloudSyncRetryPending=false;clearTimeout(cloudSyncTimer);
+   if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent='Sign-in required · pending changes kept';root.title=e.message+' Click to renew Cloudflare Access.'}
+   console.warn('myTIME Cloudflare sign-in required:',e);
+   return false;
+  }
+  if(e?.retryable===false){
+   cloudSyncRetryPending=false;clearTimeout(cloudSyncTimer);
+   if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent='Cloud save blocked · '+String(e.message||'check save details').slice(0,72);root.title=e.message||'The server rejected this save. Pending edits are retained.'}
+   console.error('myTIME Cloudflare rejected a save:',e);
+   return false;
+  }
   cloudSyncRetryCount=Math.min(cloudSyncRetryCount+1,6);
   cloudSyncRetryPending=true;
   const delay=Math.min(30000,1000*Math.pow(2,cloudSyncRetryCount));
   clearTimeout(cloudSyncTimer);
   cloudSyncTimer=setTimeout(()=>{cloudSyncRetryPending=false;syncCloudNow()},delay);
-  const root=$('saveStatus'),label=$('saveStatusText');
-  if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent='Cloud save failed · retrying automatically';root.title=(e?.message||'Cloudflare save failed')+' · next retry in '+Math.round(delay/1000)+' seconds.'}
+  if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent='Cloud save failed · retrying';root.title=(e?.message||'Cloudflare save failed')+' · automatic retry in '+Math.round(delay/1000)+' seconds.'}
   console.warn('myTIME Cloudflare save failed; retry scheduled:',e);
   return false;
  }finally{
@@ -1036,9 +1075,7 @@ async function initCloudSync() {
  try{
   setCloudStartupGate(false,'Loading the latest timecard directly from Cloudflare D1…');
   setSaveStatus(false,'Loading your latest Cloudflare D1 data…');
-  const r=await fetch('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));
+  const {body:j}=await cloudRequest('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
   cloudRevision=Number(j.revision||0);
   cloudBasePayload=cloneCloudValue(j.payload||emptyCloudPayload());
   if(j.payload){
@@ -1066,8 +1103,13 @@ async function initCloudSync() {
   cloudSyncReady=false;
   cloudSyncBlocked=false;
   window.myTimeAutoCloudConnected=false;
-  setSaveStatus(false,'Cloud unavailable · changes are not confirmed saved');
-  setCloudStartupGate(false,'Cloudflare could not load this account. No local timecard data is being shown or uploaded. Check your sign-in, then retry the cloud connection.');
+  if(e?.authRequired||cloudAuthRequired){
+   setSaveStatus(false,'Sign-in required · pending changes kept');
+   setCloudStartupGate(false,'Your Cloudflare Access session needs to be renewed. Select the retry control to sign in again. Pending browser changes have not been cleared.');
+  }else{
+   setSaveStatus(false,'Cloud load failed · '+String(e?.message||'retry needed').slice(0,78));
+   setCloudStartupGate(false,'Cloudflare could not load this account: '+String(e?.message||'Unknown error')+'. Pending browser changes have not been cleared.');
+  }
   console.warn('myTIME Cloudflare load failed:',e);
   return false;
  }
@@ -1077,6 +1119,7 @@ let cloudRetryBusy=false;
 async function retryCloudSync(){
  const root=$('saveStatus'),label=$('saveStatusText');
  if(cloudRetryBusy)return;
+ if(cloudAuthRequired){startMyTimeAccessLogin();return}
  cloudRetryBusy=true;
  if(root)root.setAttribute('aria-busy','true');
  try{

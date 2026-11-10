@@ -65,7 +65,8 @@ export async function onRequest(context) {
     const saved = await env.MYTIME_DB.prepare("SELECT updated_at, revision FROM mytime_user_data WHERE email = ?").bind(email).first();
     return json({ ok: true, email, updatedAt: saved?.updated_at || new Date().toISOString(), revision: Number(saved?.revision || expectedRevision + 1) });
   } catch (error) {
-    console.error("myTIME records API error:", error);
-    return json({ ok: false, error: "Cloud storage request failed. Check the Cloudflare Pages function logs." }, 500);
+    const detail = String(error?.message || error || "Unknown D1 error").replace(/[\r\n\t]+/g, " ").slice(0, 240);
+    console.error("myTIME records API error:", { name: error?.name || "Error", message: detail });
+    return json({ ok: false, code: "CLOUD_STORAGE_ERROR", error: "Cloud storage failed: " + detail }, 500);
   }
 }
