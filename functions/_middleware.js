@@ -450,6 +450,9 @@ export async function onRequest(context) {
   if (url.pathname === "/" || url.pathname === "/index.html") {
     return Response.redirect("https://time.fossna.cloud/", 302);
   }
+  if (url.pathname.startsWith("/api/") && url.pathname !== "/api/mcp") {
+    return new Response("Not found.", { status: 404, headers: { "cache-control": "no-store" } });
+  }
   const isMcpRoute = url.pathname === "/api/mcp"
     || url.pathname === "/authorize"
     || url.pathname === "/oauth/token"
