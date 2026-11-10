@@ -56,7 +56,7 @@ function createServer(email,account) {
     startDate:z.string().optional().describe("Inclusive start date YYYY-MM-DD; defaults to the last 7 days."),
     endDate:z.string().optional().describe("Inclusive end date YYYY-MM-DD; defaults to today.")
   })},async({startDate,endDate})=>{
-    const today=new Date().toISOString().slice(0,10);
+    const zone=account.settings.timezone&&account.settings.timezone!=="local"?account.settings.timezone:"America/Chicago";\n    let today; try { today=new Intl.DateTimeFormat("en-CA",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()); } catch { today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Chicago",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()); }
     const end=normalizeDate(endDate,today),start=normalizeDate(startDate,new Date(Date.now()-6*86400000).toISOString().slice(0,10));
     if(start>end)throw new Error("startDate must be on or before endDate.");
     const dates=Object.keys(account.records).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&d>=start&&d<=end).sort();
