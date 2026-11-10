@@ -1313,7 +1313,7 @@ function setProfileOpen(open){
  }
 }
 $('profileTrigger').setAttribute('aria-controls','profilePanel');$('profileTrigger').setAttribute('aria-expanded','false');
-$('profileTrigger').addEventListener('click',()=>setProfileOpen($('profilePanel').hidden));
+$('profileTrigger').addEventListener('click',()=>{if(!authenticatedUserEmail){window.location.assign('/cdn-cgi/access/login/be13baf6dd40cfd1cbb67658f27069c13b65ada283abe5e93ed1c6bcbacb3ee5');return}setProfileOpen($('profilePanel').hidden)});
 $('closeProfile').onclick=()=>setProfileOpen(false);
 $('profileBackdrop').onclick=()=>setProfileOpen(false);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('profilePanel').hidden)setProfileOpen(false)});
