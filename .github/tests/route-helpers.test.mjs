@@ -43,3 +43,27 @@ test("weekly Make report dates must be valid calendar dates", () => {
   assert.equal(isCalendarDate("10/11/2026"), false);
   assert.equal(isCalendarDate("2026-11-10x"), false);
 });
+
+import { normalizeCloudPayload, stableCloudJson } from "../../functions/api/records.js";
+
+test("D1 payloads exclude browser-local recovery snapshots", () => {
+  const source = {
+    records: { "2026-11-10": { punches: [{ type: "in", ts: 1 }] } },
+    localState: {
+      "foss-time-theme-v1": "dark",
+      "foss-time-recovery-snapshot-v1": "{local copy}",
+      "foss-time-recovery-snapshot-v1-status": "2026-11-10T12:00:00Z"
+    }
+  };
+  const normalized = normalizeCloudPayload(source);
+  assert.equal(normalized.localState["foss-time-theme-v1"], "dark");
+  assert.equal("foss-time-recovery-snapshot-v1" in normalized.localState, false);
+  assert.equal("foss-time-recovery-snapshot-v1-status" in normalized.localState, false);
+  assert.equal("foss-time-recovery-snapshot-v1" in source.localState, true, "Normalization must not mutate the caller's payload.");
+});
+
+test("D1 payload comparison is stable across object-key ordering", () => {
+  const a = { settings: { start: "08:00", end: "17:00" }, records: { "2026-11-10": { punches: [] } } };
+  const b = { records: { "2026-11-10": { punches: [] } }, settings: { end: "17:00", start: "08:00" } };
+  assert.equal(stableCloudJson(a), stableCloudJson(b));
+});

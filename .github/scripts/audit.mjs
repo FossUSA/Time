@@ -44,6 +44,8 @@ for (const path of [
 
 assert(routes.include.includes("/api/*"), "Pages API routes are not included.");
 assert(read("functions/api/records.js").includes("WHERE email = ? AND revision = ?"), "D1 record writes must compare the expected revision.");
+assert(read("functions/api/records.js").includes("unchanged: true"), "Repeated or UI-only payloads must not increment the D1 revision.");
+assert(read("functions/api/records.js").includes("foss-time-recovery-snapshot-v1-status"), "Browser recovery snapshots must be excluded by the server too.");
 assert(read("functions/api/make-webhook.js").includes("filter(isCalendarDate)"), "Make weekly reports must use strict date validation.");
 assert(read("functions/api/power-automate.js").includes("time.fossna.cloud"), "Power Automate must allow the production app origin.");
 assert(read("assets/js/10-app-core.js").includes("shouldSyncCloudStorageKey(key)"), "Cloud storage observation must use the explicit allowlist.");
