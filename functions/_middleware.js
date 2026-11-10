@@ -287,6 +287,7 @@ function buildMcpServer(env) {
       }
       if (confirm !== true) return jsonText({ ok: false, error: "Correction not applied: explicit confirmation is required." });
       const workDate = normalizeDate(date, "");
+      if (!/T.*(?:Z|[+-]\\d{2}:\\d{2})$/.test(newTimestamp)) throw new Error("newTimestamp must include an explicit timezone, such as Z or -06:00.");
       const timestamp = Date.parse(newTimestamp);
       if (!Number.isFinite(timestamp)) throw new Error("newTimestamp must be a valid ISO 8601 date-time.");
       const normalizedTimestamp = new Date(timestamp).toISOString();
@@ -409,7 +410,10 @@ const provider = new OAuthProvider({
   apiRoute: "/api/mcp",
   apiHandler: {
     fetch(request, env, ctx) {
-      if (!ctx.auth.scope.includes("mytime:read")) {
+      const grantedScopes = Array.isArray(ctx.auth?.scope)
+        ? ctx.auth.scope
+        : String(ctx.auth?.scope || "").split(/\\s+/).filter(Boolean);
+      if (!grantedScopes.includes("mytime:read")) {
         return new Response("The myTIME read permission is required.", { status: 403 });
       }
       const handler = createMcpHandler(() => buildMcpServer(env), {
