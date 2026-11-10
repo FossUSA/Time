@@ -180,6 +180,7 @@ function buildMcpServer(env) {
     "mytime_schedule",
     { description: "Read the signed-in user's myTIME work schedule, lunch and break settings, and hour goals.", inputSchema: z.object({}) },
     async (_args, extra) => {
+      const email = signedInEmail();
       const account = await loadAccount(env, email);
       const s = account.settings;
       return jsonText({
@@ -198,6 +199,7 @@ function buildMcpServer(env) {
     "mytime_time_bank",
     { description: "Read the signed-in user's time-bank entries. Read-only.", inputSchema: z.object({}) },
     async (_args, extra) => {
+      const email = signedInEmail();
       const account = await loadAccount(env, email);
       return jsonText({
         account: email,
