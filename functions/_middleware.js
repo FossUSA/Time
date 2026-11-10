@@ -425,7 +425,7 @@ const provider = new OAuthProvider({
       }
       const handler = createMcpHandler(() => buildMcpServer(env), {
         route: "/api/mcp",
-        allowedHostnames: ["mcp.fossna.cloud"],
+        allowedOriginHostnames: ["mcp.fossna.cloud"],
       });
       return handler(request, env, ctx);
     },
