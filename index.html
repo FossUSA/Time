@@ -880,7 +880,7 @@ function applyCloudPayload(remote){
   data=remote.records&&typeof remote.records==='object'?remote.records:{};
   settings=remote.settings&&typeof remote.settings==='object'?remote.settings:settings;
   if(Array.isArray(remote.bankEntries)&&typeof bankEntries!=='undefined')bankEntries=remote.bankEntries;
-  if(typeof profile!=='undefined'){const restoredProfile=load('foss-time-profile-v1',remote.profile&&typeof remote.profile==='object'?remote.profile:{name:'',email:'',photo:''});profile=restoredProfile&&typeof restoredProfile==='object'?restoredProfile:{name:'',email:'',photo:''};}
+  if(typeof profile!=='undefined'){const restoredProfile=remote.profile&&typeof remote.profile==='object'?remote.profile:{name:'',email:'',photo:''};profile={name:typeof restoredProfile.name==='string'?restoredProfile.name:'',email:typeof restoredProfile.email==='string'?restoredProfile.email:'',photo:typeof restoredProfile.photo==='string'?restoredProfile.photo:''};}
   if(remote.theme==='dark'||remote.theme==='light'){localStorage.setItem('foss-time-theme-v1',remote.theme);if(typeof window.myTimeApplyTheme==='function')window.myTimeApplyTheme(remote.theme)}
   localStorage.setItem(KEY,JSON.stringify(data));localStorage.setItem(SETKEY,JSON.stringify(settings));
   if(typeof bankEntries!=='undefined')localStorage.setItem('foss-time-bank-v1',JSON.stringify(bankEntries));
