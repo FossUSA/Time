@@ -879,7 +879,7 @@ function applyCloudPayload(remote){
   data=remote.records&&typeof remote.records==='object'?remote.records:{};
   settings=remote.settings&&typeof remote.settings==='object'?remote.settings:settings;
   if(Array.isArray(remote.bankEntries)&&typeof bankEntries!=='undefined')bankEntries=remote.bankEntries;
-  if(remote.profile&&typeof remote.profile==='object'&&typeof profile!=='undefined')profile=remote.profile;
+  if(typeof profile!=='undefined'){const restoredProfile=load('foss-time-profile-v1',remote.profile&&typeof remote.profile==='object'?remote.profile:{name:'',email:'',photo:''});profile=restoredProfile&&typeof restoredProfile==='object'?restoredProfile:{name:'',email:'',photo:''};}
   if(remote.theme==='dark'||remote.theme==='light'){localStorage.setItem('foss-time-theme-v1',remote.theme);if(typeof window.myTimeApplyTheme==='function')window.myTimeApplyTheme(remote.theme)}
   localStorage.setItem(KEY,JSON.stringify(data));localStorage.setItem(SETKEY,JSON.stringify(settings));
   if(typeof bankEntries!=='undefined')localStorage.setItem('foss-time-bank-v1',JSON.stringify(bankEntries));
