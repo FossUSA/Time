@@ -434,6 +434,9 @@ const provider = new OAuthProvider({
 export async function onRequest(context) {
   const url = new URL(context.request.url);
   if (url.hostname !== "mcp.fossna.cloud") return context.next();
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    return Response.redirect("https://time.fossna.cloud/", 302);
+  }
   const isMcpRoute = url.pathname === "/api/mcp"
     || url.pathname === "/authorize"
     || url.pathname === "/oauth/token"
