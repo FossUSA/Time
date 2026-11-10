@@ -48,6 +48,9 @@ assert(read("functions/api/records.js").includes("unchanged: true"), "Repeated o
 assert(read("functions/api/records.js").includes("foss-time-recovery-snapshot-v1-status"), "Browser recovery snapshots must be excluded by the server too.");
 assert(read("functions/api/make-webhook.js").includes("filter(isCalendarDate)"), "Make weekly reports must use strict date validation.");
 assert(read("functions/api/power-automate.js").includes("time.fossna.cloud"), "Power Automate must allow the production app origin.");
+const webhookUi = read("assets/js/40-webhook-integrations.js");
+assert(webhookUi.includes(String.raw`powerplatform\.com`) && webhookUi.includes(String.raw`azure-apihub\.net`), "Power Automate browser allowlist must match its Pages API allowlist.");
+assert(!webhookUi.includes(String.raw`flow\.microsoft\.com`) && !webhookUi.includes(String.raw`powerautomate\.com`), "Power Automate UI must not promise domains rejected by its API.");
 assert(read("assets/js/10-app-core.js").includes("shouldSyncCloudStorageKey(key)"), "Cloud storage observation must use the explicit allowlist.");
 assert(!read("assets/js/10-app-core.js").includes("String(key).startsWith('foss-time-')&&!cloudHydrating"), "Every local UI snapshot must not trigger a cloud write.");
 assert(!read("assets/js/30-quality-of-life.js").includes("priorRender();snapshot()"), "The 15-second dashboard refresh must not write a recovery snapshot.");
