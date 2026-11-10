@@ -105,17 +105,63 @@ function normalizeCalendarBreakTime(value){
 function displayCalendarBreakTime(value){
  return /^\d{2}:\d{2}$/.test(String(value||''))?humanTime(value):'';
 }
-function confirmCalendarBreakSave(dateKey){
+function calendarBreakSnapshot(record){
+ const status=record?.breakStatus||{},times=record?.breakTimes||{};
+ return ['lunch','morning','afternoon'].map(key=>[
+  ['taken','skipped','not-recorded'].includes(status[key])?status[key]:'not-recorded',
+  String(times[key]?.start||'').trim(),
+  String(times[key]?.end||'').trim()
+ ]);
+}
+function calendarBreakStatusLabel(value){
+ return value==='taken'?'Taken':value==='skipped'?'Skipped':'Not recorded';
+}
+function calendarBreakRange(value){
+ const start=value?.start?humanTime(value.start):'';
+ const end=value?.end?humanTime(value.end):'';
+ if(start&&end)return start+'–'+end;
+ if(start)return 'Start '+start;
+ if(end)return 'End '+end;
+ return 'Times not entered';
+}
+function calendarBreakSummary(record,includeEmpty=true){
+ const status=record?.breakStatus||{},times=record?.breakTimes||{};
+ const sections=[['lunch','Lunch'],['morning','Morning break'],['afternoon','Afternoon break']];
+ const lines=sections.map(([key,label])=>{
+  const state=['taken','skipped','not-recorded'].includes(status[key])?status[key]:'not-recorded';
+  const value=times[key]||{};
+  const hasTimes=!!(value.start||value.end);
+  if(!includeEmpty&&state==='not-recorded'&&!hasTimes)return '';
+  return label+': '+calendarBreakStatusLabel(state)+' · '+calendarBreakRange(value);
+ }).filter(Boolean);
+ return lines.length?lines.join('\n'):'No documented lunch or break entries';
+}
+async function confirmCalendarBreakSave(dateKey){
  const badge=document.getElementById('calendarSavedBadge');
  if(badge&&myTimeSelectedDate===dateKey)badge.textContent='Saving to Cloudflare…';
- if(typeof window.myTimeFlushCloudSync!=='function')return;
- window.myTimeFlushCloudSync().then(()=>{
-  if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Cloudflare saved';
- }).catch(error=>{
-  console.warn('myTIME break/lunch save was not confirmed:',error);
-  setSaveStatus(false,'Break/lunch not confirmed · click to retry');
-  if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Save needs attention';
- });
+ try{
+  if(typeof window.myTimeFlushCloudSync!=='function')throw new Error('Cloudflare save confirmation is unavailable.');
+  await window.myTimeFlushCloudSync();
+  // Verify the exact edited date from D1; a generic successful save is not
+  // enough to mark this day complete in the calendar.
+  const response=await fetch('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
+  const payload=await response.json().catch(()=>null);
+  if(!response.ok||!payload?.ok||!payload.payload)throw new Error(payload?.error||('Cloudflare read-back failed (HTTP '+response.status+').'));
+  const localSnapshot=calendarBreakSnapshot(data[dateKey]);
+  const cloudSnapshot=calendarBreakSnapshot(payload.payload.records?.[dateKey]);
+  if(JSON.stringify(localSnapshot)!==JSON.stringify(cloudSnapshot)){
+   throw new Error('Cloudflare did not return the same lunch and break entries for '+dateKey+'. The editor values are being kept; the day is not marked saved.');
+  }
+  if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Cloudflare verified · revision '+Number(payload.revision||0);
+  const status=document.getElementById('saveStatusText');
+  if(status&&window.myTimeAutoCloudConnected)status.textContent='Cloud saved · '+dateKey+' verified';
+  return true;
+ }catch(error){
+  console.warn('myTIME break/lunch read-back verification failed:',error);
+  setSaveStatus(false,'Break/lunch save not verified · pending data kept');
+  if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Save not verified · retry';
+  throw error;
+ }
 }
 function ensureBreakFields(k){
  const r=data[k]||(data[k]={punches:[],audit:[]});
@@ -269,12 +315,14 @@ function renderCalendarIntervalAnalysis(k,rec){
   const note=document.createElement('small');note.textContent='Allowance: '+fmtMin(allowed)+(detail?' · '+detail:'');
   box.append(h,value,badge,note);root.appendChild(box);
  }
- add('Lunch duration',lunchActual,lunchAllowed,lunchStarted&&!lunchEnded?'Lunch is still open':(lunchActual!==null&&lunchActual<lunchAllowed?'Shorter than scheduled':lunchActual!==null&&lunchActual>lunchAllowed?'Longer than scheduled':'Scheduled lunch allowance'),lunchActual===null||!lunchEnded);
+ const lunchFallbackRecorded=!!(times.lunch?.start&&times.lunch?.end);
+ const lunchDetail=calendarBreakStatusLabel(status.lunch)+' · '+calendarBreakRange(times.lunch)+(lunchStarted&&!lunchEnded?' · punch lunch is still open':'');
+ add('Lunch duration',lunchActual,lunchAllowed,lunchDetail,lunchActual===null||(!lunchEnded&&!lunchFallbackRecorded));
  [['Morning break','morning','morning-break-start','morning-break-end'],['Afternoon break','afternoon','afternoon-break-start','afternoon-break-end']].forEach(([label,key,st,et])=>{
   const actual=calendarIntervalMinutes(rec,st,et,times[key]);
   const ended=p.some(x=>x.type===et),fallbackRecorded=!!(times[key]?.start&&times[key]?.end);
   const missing=actual===null||(!ended&&!fallbackRecorded);
-  const detail=status[key]==='skipped'?'Marked skipped':status[key]==='taken'?'Marked taken':'Status not recorded';
+  const detail=calendarBreakStatusLabel(status[key])+' · '+calendarBreakRange(times[key]);
   add(label,actual,15,detail,missing);
  });
  const planned=Math.max(0,plannedMinutes(schedule)),out=[...p].reverse().find(x=>x.type==='out'),last=p[p.length-1];
@@ -293,7 +341,8 @@ function printCalendarReport(scope){
  const report=document.getElementById('calendarPrintReport');if(!report)return;let totalMs=0,days=0,punchCount=0;
  const cells=keys.map(k=>{const date=new Date(k+'T12:00:00'),r=calendarRecord(k),p=r.punches||[],inside=!monthMode||date.getMonth()===first.getMonth(),out=[...p].reverse().find(x=>x.type==='out'),lastP=p[p.length-1],end=out?.ts||(k===todayKey()?Date.now():lastP?.ts||Date.now()),ms=p.length?paidMs(r,end):0;if(inside&&p.length){totalMs+=ms;days++;punchCount+=p.length}
  const time=(type,rev=false)=>{const x=rev?[...p].reverse().find(v=>v.type===type):p.find(v=>v.type===type);return x?.ts?fmtTime(x.ts):''},punches=[['IN',time('in')],['LUNCH OUT',time('lunch-start')],['LUNCH IN',time('lunch-end')],['OUT',time('out',true)]].filter(x=>x[1]);
- return '<div class="calendar-print-day '+(!inside?'outside-month ':'')+(k===todayKey()?'is-today':'')+'"><div class="calendar-print-day-number">'+date.getDate()+'</div>'+(punches.length?punches.map(x=>'<div class="calendar-print-punch"><span class="calendar-print-dot">●</span> '+esc(x[0])+' '+esc(x[1])+'</div>').join(''):'<div class="calendar-print-punch">'+(inside?'No punches':'')+'</div>')+'<div class="calendar-print-hours">'+esc(p.length?fmtMin(ms/60000):'0m')+'</div></div>'}).join('');
+ const documented=calendarBreakSummary(r,false);
+ return '<div class="calendar-print-day '+(!inside?'outside-month ':'')+(k===todayKey()?'is-today':'')+'"><div class="calendar-print-day-number">'+date.getDate()+'</div>'+(punches.length?punches.map(x=>'<div class="calendar-print-punch"><span class="calendar-print-dot">●</span> '+esc(x[0])+' '+esc(x[1])+'</div>').join(''):'<div class="calendar-print-punch">'+(inside?'No punches':'')+'</div>')+(documented!=='No documented lunch or break entries'?'<div class="calendar-print-breaks"><strong>Documented breaks</strong><br>'+esc(documented).replaceAll('\n','<br>')+'</div>':'')+'<div class="calendar-print-hours">'+esc(p.length?fmtMin(ms/60000):'0m')+'</div></div>'}).join('');
  const weekdays=(monthMode?['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']).map(d=>'<div class="calendar-print-weekday">'+d+'</div>').join(''),title=monthMode?first.toLocaleDateString(undefined,{month:'long',year:'numeric'}):'Weekly Timecard',range=first.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' – '+last.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}),name=(typeof profile!=='undefined'&&profile.name)||'Employee',generated=new Date().toLocaleString(),relevant=monthMode?keys.filter(k=>k.slice(0,7)===calendarKeyDate(first).slice(0,7)):keys;
  const recent=relevant.filter(k=>(data[k]?.punches||[]).length).slice(-5).map(k=>'<div class="calendar-print-stat"><span>'+esc(new Date(k+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}))+'</span><strong>'+esc(calendarPaid(k))+'</strong></div>').join('');
  report.innerHTML='<header class="calendar-print-head"><div class="calendar-print-brand"><img class="calendar-print-logo" src="https://www.fossanalytics.com/Design/static/foss-logo.png" alt="FOSS" onerror="this.style.display=\'none\'"><div><div class="calendar-print-brand-name">myTIME</div><div class="calendar-print-tagline">FOSS North America · Time & Attendance</div></div></div><div class="calendar-print-meta"><strong>'+esc(name)+'</strong>'+esc(Intl.DateTimeFormat().resolvedOptions().timeZone||'Local time')+'<br>Report period: '+esc(range)+'<br>Generated: '+esc(generated)+'</div></header><div class="calendar-print-title"><div><h1>'+esc(title)+'</h1><p>Time & attendance calendar · Locally saved punch records</p></div><strong>'+esc(range)+'</strong></div><div class="calendar-print-grid">'+weekdays+cells+'</div><section class="calendar-print-summary"><div class="calendar-print-card"><h2>Time Summary</h2><div class="calendar-print-stat"><span>Days with punches</span><strong>'+days+'</strong></div><div class="calendar-print-stat"><span>Punch events</span><strong>'+punchCount+'</strong></div><div class="calendar-print-stat total"><span>Total recorded paid time</span><strong>'+esc(fmtMin(totalMs/60000))+'</strong></div></div><div class="calendar-print-card"><h2>Recent Daily Totals</h2>'+(recent||'<div class="calendar-print-stat">No punch records saved</div>')+'<div class="calendar-print-stat total"><span>Period total</span><strong>'+esc(fmtMin(totalMs/60000))+'</strong></div></div><div class="calendar-print-card"><h2>Legend</h2><div class="calendar-print-legend"><span>● Punch event</span><span>Blue band: recorded time</span><span>Outlined day: today</span></div><p style="font-size:6.5pt;margin-top:7pt;color:#64718b">Blank days mean no punches are saved.</p></div></section><footer class="calendar-print-foot"><div><strong>TIME CLOCK RECORDS</strong><br>Verify times against your records. Not an official payroll document.</div><div style="text-align:right">FOSS North America · myTIME<br>Track Today. Build Tomorrow.</div></footer>';
@@ -301,8 +350,8 @@ function printCalendarReport(scope){
 }
 function exportCalendarCsv(keys){
  const q=v=>{const s=String(v??'');return '"'+s.replace(/"/g,'""')+'"';};
- const rows=[['Date','Clock in','Lunch out','Lunch in','Clock out','Paid time','Punch count','Late start minutes','Make-up note','Lunch status','Morning break status','Afternoon break status','Morning break start','Morning break end','Afternoon break start','Afternoon break end']];
- keys.forEach(k=>{const r=data[k]||{punches:[]},p=r.punches||[],get=t=>p.find(x=>x.type===t),out=[...p].reverse().find(x=>x.type==='out'),clock=t=>{const item=t==='out'?out:get(t);return item?.ts?fmtTime(item.ts):''};rows.push([k,clock('in'),clock('lunch-start'),clock('lunch-end'),clock('out'),p.length?fmtMin(paidMs(r,out?.ts||Date.now())/60000):'',p.length,lateStartMinutes(k),recoveryNote(k),(r.breakStatus||{}).lunch||'not-recorded',(r.breakStatus||{}).morning||'not-recorded',(r.breakStatus||{}).afternoon||'not-recorded',r.breakTimes?.morning?.start||'',r.breakTimes?.morning?.end||'',r.breakTimes?.afternoon?.start||'',r.breakTimes?.afternoon?.end||''])});
+ const rows=[['Date','Clock in punch','Lunch out punch','Lunch in punch','Clock out punch','Paid time','Punch count','Late start minutes','Make-up note','Lunch status','Lunch record start','Lunch record end','Morning break status','Morning break record start','Morning break record end','Afternoon break status','Afternoon break record start','Afternoon break record end']];
+ keys.forEach(k=>{const r=data[k]||{punches:[]},p=r.punches||[],get=t=>p.find(x=>x.type===t),out=[...p].reverse().find(x=>x.type==='out'),clock=t=>{const item=t==='out'?out:get(t);return item?.ts?fmtTime(item.ts):''},status=r.breakStatus||{},times=r.breakTimes||{};rows.push([k,clock('in'),clock('lunch-start'),clock('lunch-end'),clock('out'),p.length?fmtMin(paidMs(r,out?.ts||Date.now())/60000):'',p.length,lateStartMinutes(k),recoveryNote(k),status.lunch||'not-recorded',times.lunch?.start||'',times.lunch?.end||'',status.morning||'not-recorded',times.morning?.start||'',times.morning?.end||'',status.afternoon||'not-recorded',times.afternoon?.start||'',times.afternoon?.end||''])});
  const csv=rows.map(row=>row.map(q).join(',')).join('\r\n'),blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='myTIME-monthly-timesheet-'+keys[0]+'-to-'+keys[keys.length-1]+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 /* Direct editing and deletion for any saved date */
@@ -311,9 +360,11 @@ function managerRecordTimes(k){const p=data[k]?.punches||[],first=t=>p.find(x=>x
 function renderRecordManager(){
  const body=document.getElementById('recordManagerRows');if(!body)return;
  const filter=(document.getElementById('recordSearch')?.value||'').trim(),keys=Object.keys(data).filter(k=>!filter||k.includes(filter)).sort().reverse();body.innerHTML='';
- if(!keys.length){body.innerHTML='<tr><td colspan="7">No matching saved records.</td></tr>';return}
- keys.forEach(k=>{const p=managerRecordTimes(k),rec=data[k],paid=paidMs(rec,[...(rec.punches||[])].reverse().find(x=>x.type==='out')?.ts||Date.now());const tr=document.createElement('tr');
-  [k, p.cin?fmtTime(p.cin):'—',p.lo?fmtTime(p.lo):'—',p.li?fmtTime(p.li):'—',p.cout?fmtTime(p.cout):'—',fmtMin(paid/60000)].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
+ if(!keys.length){body.innerHTML='<tr><td colspan="8">No matching saved records.</td></tr>';return}
+ keys.forEach(k=>{
+  const p=managerRecordTimes(k),rec=data[k],paid=paidMs(rec,[...(rec.punches||[])].reverse().find(x=>x.type==='out')?.ts||Date.now()),tr=document.createElement('tr');
+  [k,p.cin?fmtTime(p.cin):'—',p.lo?fmtTime(p.lo):'—',p.li?fmtTime(p.li):'—',p.cout?fmtTime(p.cout):'—',fmtMin(paid/60000)].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
+  const documented=document.createElement('td');documented.className='record-break-summary';documented.textContent=calendarBreakSummary(rec,true);tr.appendChild(documented);
   const td=document.createElement('td'),actions=document.createElement('div');actions.className='record-row-actions';const edit=document.createElement('button');edit.type='button';edit.className='quiet';edit.textContent='Edit';edit.onclick=()=>openRecordEditor(k);const del=document.createElement('button');del.type='button';del.className='danger';del.textContent='Delete';del.onclick=()=>deleteRecordDate(k);actions.append(edit,del);td.appendChild(actions);tr.appendChild(td);body.appendChild(tr);
  });
 }

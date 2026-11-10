@@ -683,3 +683,8 @@ html.mytime-cloud-pending main.shell{visibility:hidden!important;pointer-events:
 .cloud-startup-card strong{display:block;font-size:20px;line-height:1.25}
 .cloud-startup-card p{margin:10px 0 0;color:var(--muted,#65718a);font-size:13px}
 .cloud-startup-card button{margin-top:18px}
+
+/* Keep documented break entries readable in the Records table and printed reports. */
+.record-break-summary{min-width:260px;white-space:pre-line;line-height:1.5;font-size:12px;color:var(--muted)}
+.calendar-print-breaks{font-size:6.2pt;line-height:1.25;margin-top:3pt;color:#35466a;white-space:normal;overflow-wrap:anywhere}
+.calendar-print-breaks strong{font-weight:800;color:#172b58}

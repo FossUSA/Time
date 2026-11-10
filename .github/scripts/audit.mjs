@@ -55,6 +55,15 @@ assert(read("assets/js/10-app-core.js").includes("shouldSyncCloudStorageKey(key)
 assert(!read("assets/js/10-app-core.js").includes("String(key).startsWith('foss-time-')&&!cloudHydrating"), "Every local UI snapshot must not trigger a cloud write.");
 assert(!read("assets/js/30-quality-of-life.js").includes("priorRender();snapshot()"), "The 15-second dashboard refresh must not write a recovery snapshot.");
 assert(read("assets/js/10-app-core.js").includes("foss-time-recovery-snapshot-v1-status"), "Local recovery snapshots must stay out of the cloud-sync stream.");
+const calendarUi = read("assets/js/20-navigation.js");
+assert(calendarUi.includes("async function confirmCalendarBreakSave"), "Break/lunch edits must use asynchronous confirmation.");
+assert(calendarUi.includes("await window.myTimeFlushCloudSync()"), "Break/lunch edits must flush the cloud save before confirmation.");
+assert(calendarUi.includes("cache:'no-store'"), "Break/lunch confirmation must read back the latest D1 record.");
+assert(calendarUi.includes("calendarBreakSnapshot(payload.payload.records?.[dateKey])"), "The edited date's exact break fields must be verified against D1.");
+assert(calendarUi.includes("function calendarBreakSummary"), "Documented break entries must have a shared display formatter.");
+assert(calendarUi.includes("calendarBreakSummary(rec,true)"), "The Records manager must display documented break entries.");
+assert(calendarUi.includes("Lunch record start") && calendarUi.includes("Lunch record end"), "CSV export must include separate documented lunch times.");
+assert(calendarUi.includes("calendar-print-breaks"), "Printed calendars must display documented break entries separately from punches.");
 assert(pkg.scripts?.test, "Repository test script is missing.");
 
 console.log("myTIME audit passed: browser assets, syntax, Access auth, D1 revision guards, webhook routing, and service-worker policy.");
