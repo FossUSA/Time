@@ -111,13 +111,14 @@
  }
  const previousSave=save;save=function(){previousSave();snapshot();renderAnalytics()};
  const previousSaveSet=saveSet;saveSet=function(){previousSaveSet();snapshot();renderAnalytics()};
- const priorRender=render;render=function(){priorRender();snapshot();renderAnalytics()};
+ const priorRender=render;render=function(){priorRender();renderAnalytics()};
  // Offer recovery if records were cleared but an earlier automatic snapshot remains.
  try{
   const raw=localStorage.getItem(AUTO_KEY),current=JSON.parse(localStorage.getItem(KEY)||'{}');
   if(raw&&(!current||!Object.keys(current).length)){const backup=JSON.parse(raw);if(backup.data&&Object.keys(backup.data).length&&confirm('myTIME found an automatic recovery snapshot from '+new Date(backup.createdAt||Date.now()).toLocaleString()+'. Restore those local records?')){data=backup.data;if(backup.settings)settings=backup.settings;if(Array.isArray(backup.bankEntries))bankEntries=backup.bankEntries;save();saveSet();localStorage.setItem(BANKKEY,JSON.stringify(bankEntries));applySettings();render()}}
  }catch{}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountAnalytics);else mountAnalytics();
+ // Recovery snapshots are written after actual record/settings saves, not on every clock refresh.
  // Refresh analytics when navigating back to the dashboard.
  document.getElementById('appTabs')?.addEventListener('click',e=>{if(e.target.closest('[data-tab="dashboard"]'))setTimeout(renderAnalytics,0)});
  window.addEventListener('storage',e=>{if(e.key===KEY||e.key===SETKEY){try{data=load(KEY,{});settings=load(SETKEY,settings);renderAnalytics()}catch{}}});

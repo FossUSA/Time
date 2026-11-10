@@ -2,11 +2,15 @@
 const $=id=>document.getElementById(id);const KEY='foss-time-v1';const SETKEY='foss-time-settings-v1';const todayKey=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};let data=load(KEY,{}),settings=load(SETKEY,{startTime:'08:00',endTime:'17:00',lunchStart:'11:30',lunchEnd:'12:30',morningBreakTime:'10:00',afternoonBreakTime:'15:00',goalHours:8,timezone:'local'});function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
 let cloudSyncReady=false,cloudSyncBusy=false,cloudSyncDirty=false,cloudSyncTimer=null,cloudSyncBlocked=false,cloudRevision=0,cloudHydrating=false,cloudBasePayload=null,cloudSyncRetryCount=0,cloudSyncRetryPending=false;
 const nativeStorageSetItem=Storage.prototype.setItem;
-Storage.prototype.setItem=function(key,value){nativeStorageSetItem.call(this,key,value);if(this===localStorage&&String(key).startsWith('foss-time-')&&!cloudHydrating)queueCloudSync()};
+function shouldSyncCloudStorageKey(key){
+ const name=String(key);
+ return name.startsWith('foss-time-')&&name!=='foss-time-recovery-snapshot-v1'&&name!=='foss-time-recovery-snapshot-v1-status';
+}
+Storage.prototype.setItem=function(key,value){nativeStorageSetItem.call(this,key,value);if(this===localStorage&&shouldSyncCloudStorageKey(key)&&!cloudHydrating)queueCloudSync()};
 const nativeStorageRemoveItem=Storage.prototype.removeItem;
-Storage.prototype.removeItem=function(key){nativeStorageRemoveItem.call(this,key);if(this===localStorage&&String(key).startsWith('foss-time-')&&!cloudHydrating)queueCloudSync()};
+Storage.prototype.removeItem=function(key){nativeStorageRemoveItem.call(this,key);if(this===localStorage&&shouldSyncCloudStorageKey(key)&&!cloudHydrating)queueCloudSync()};
 
-function cloudLocalState(){const state={};for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key&&key.startsWith('foss-time-'))state[key]=localStorage.getItem(key)}return state}
+function cloudLocalState(){const state={};for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key&&shouldSyncCloudStorageKey(key))state[key]=localStorage.getItem(key)}return state}
 function cloudPayload(){return {records:data,settings,bankEntries:typeof bankEntries!=='undefined'?bankEntries:load('foss-time-bank-v1',[]),profile:load('foss-time-profile-v1',null),theme:localStorage.getItem('foss-time-theme-v1')||'light',localState:cloudLocalState()}}
 function mergeLegacyRecords(local,remote){const merged={...(remote||{})};for(const [date,lr] of Object.entries(local||{})){const rr=merged[date];if(!rr){merged[date]=lr;continue}const all=[...(rr.punches||[]),...(lr.punches||[])],seen=new Set();merged[date]={...rr,punches:all.filter(x=>{const k=String(x.type)+'|'+String(x.ts);if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>Number(a.ts)-Number(b.ts)),audit:[...(rr.audit||[]),...(lr.audit||[]).filter(x=>!(rr.audit||[]).some(y=>JSON.stringify(y)===JSON.stringify(x)))],breakStatus:{...(rr.breakStatus||{}),...(lr.breakStatus||{})},breakTimes:{...(rr.breakTimes||{}),...(lr.breakTimes||{})}}}return merged}
 function applyCloudPayload(remote){

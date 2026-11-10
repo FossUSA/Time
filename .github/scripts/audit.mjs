@@ -46,6 +46,10 @@ assert(routes.include.includes("/api/*"), "Pages API routes are not included.");
 assert(read("functions/api/records.js").includes("WHERE email = ? AND revision = ?"), "D1 record writes must compare the expected revision.");
 assert(read("functions/api/make-webhook.js").includes("filter(isCalendarDate)"), "Make weekly reports must use strict date validation.");
 assert(read("functions/api/power-automate.js").includes("time.fossna.cloud"), "Power Automate must allow the production app origin.");
+assert(read("assets/js/10-app-core.js").includes("shouldSyncCloudStorageKey(key)"), "Cloud storage observation must use the explicit allowlist.");
+assert(!read("assets/js/10-app-core.js").includes("String(key).startsWith('foss-time-')&&!cloudHydrating"), "Every local UI snapshot must not trigger a cloud write.");
+assert(!read("assets/js/30-quality-of-life.js").includes("priorRender();snapshot()"), "The 15-second dashboard refresh must not write a recovery snapshot.");
+assert(read("assets/js/10-app-core.js").includes("foss-time-recovery-snapshot-v1-status"), "Local recovery snapshots must stay out of the cloud-sync stream.");
 assert(pkg.scripts?.test, "Repository test script is missing.");
 
 console.log("myTIME audit passed: browser assets, syntax, Access auth, D1 revision guards, webhook routing, and service-worker policy.");
