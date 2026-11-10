@@ -84,12 +84,14 @@ async function loadAccount(env, email) {
   };
 }
 function buildMcpServer(env) {
-  const auth = getMcpAuthContext();
-  const email = String(auth?.props?.email || "").trim().toLowerCase();
-  if (!/^[^@\s]+@fossna\.com$/.test(email)) {
-    throw new Error("The OAuth grant does not contain an authorized FOSS account identity.");
+  function signedInEmail() {
+    const auth = getMcpAuthContext();
+    const email = String(auth?.props?.email || "").trim().toLowerCase();
+    if (!/^[^@\\s]+@fossna\\.com$/.test(email)) {
+      throw new Error("The OAuth grant does not contain an authorized FOSS account identity.");
+    }
+    return email;
   }
-
   const server = new McpServer({ name: "FOSS myTIME", version: "1.1.0" });
   server.registerTool(
     "mytime_status",
