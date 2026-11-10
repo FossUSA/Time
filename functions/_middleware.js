@@ -410,12 +410,6 @@ const provider = new OAuthProvider({
   apiRoute: "/api/mcp",
   apiHandler: {
     fetch(request, env, ctx) {
-      const grantedScopes = Array.isArray(ctx.auth?.scope)
-        ? ctx.auth.scope
-        : String(ctx.auth?.scope || "").split(/\s+/).filter(Boolean);
-      if (!grantedScopes.includes("mytime:read")) {
-        return new Response("The myTIME read permission is required.", { status: 403 });
-      }
       const handler = createMcpHandler(() => buildMcpServer(env), {
         route: "/api/mcp",
         allowedHostnames: ["mcp.fossna.cloud"],
