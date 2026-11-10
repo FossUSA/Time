@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "include": [
+    "/api/*",
+    "/authorize",
+    "/oauth/*",
+    "/.well-known/*"
+  ],
+  "exclude": []
+}
