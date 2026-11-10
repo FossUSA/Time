@@ -1264,9 +1264,25 @@ function updateProfileButton(){
  const isMyProfile=!!authenticatedUserEmail&&profile.email.trim().toLowerCase()===authenticatedUserEmail;
  const label=isMyProfile?(profile.name||authenticatedUserEmail):'Sign in required';
  $('profileButtonName').textContent=label;
- const initials=isMyProfile?initialsFor(profile.name,profile.email):'';
  const mini=$('miniAvatar');
- if(profile.photo){mini.replaceChildren();const avatar=document.createElement('img');avatar.alt='';avatar.src=profile.photo;mini.appendChild(avatar)}else{mini.textContent=initials}
+ /* Never reveal a locally cached name, initials, or photo before Cloudflare
+    Access has supplied the authenticated identity for this browser session. */
+ if(!isMyProfile){
+  mini.replaceChildren();
+  mini.textContent='?';
+  mini.setAttribute('aria-label','Sign in required');
+  return;
+ }
+ mini.removeAttribute('aria-label');
+ if(profile.photo){
+  mini.replaceChildren();
+  const avatar=document.createElement('img');
+  avatar.alt='';
+  avatar.src=profile.photo;
+  mini.appendChild(avatar);
+ }else{
+  mini.textContent=initialsFor(profile.name,profile.email);
+ }
 }
 function setProfileOpen(open){
  const panel=$('profilePanel'),backdrop=$('profileBackdrop'),trigger=$('profileTrigger');
