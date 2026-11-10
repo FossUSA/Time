@@ -1170,12 +1170,33 @@ $('restoreFile').onchange=async e=>{let f=e.target.files[0];if(!f)return;try{let
 
 /* Local profile autosave. This is not company authentication or cross-device storage. */
 const PROFILEKEY='foss-time-profile-v1';
-let profile=load(PROFILEKEY,{name:'Josh Wuflestad',email:'jowu@fossna.com',photo:''});
-/* Recover the known FOSS profile identity when browser storage was cleared or partially reset. */
-if(!profile||typeof profile!=='object'||Array.isArray(profile))profile={name:'Josh Wuflestad',email:'jowu@fossna.com',photo:''};
-profile.name=(typeof profile.name==='string'&&profile.name.trim())?profile.name:'Josh Wuflestad';
-profile.email=(typeof profile.email==='string'&&profile.email.trim())?profile.email:'jowu@fossna.com';
+let profile=load(PROFILEKEY,{name:'',email:'',photo:''});
+if(!profile||typeof profile!=='object'||Array.isArray(profile))profile={name:'',email:'',photo:''};
+profile.name=typeof profile.name==='string'?profile.name:'';
+profile.email=typeof profile.email==='string'?profile.email:'';
 if(typeof profile.photo!=='string')profile.photo='';
+let authenticatedUserEmail='';
+async function loadAuthenticatedIdentity(){
+ try{
+  const response=await fetch('/api/whoami',{credentials:'same-origin',cache:'no-store'});
+  if(!response.ok)throw new Error('Not authenticated');
+  const identity=await response.json();
+  authenticatedUserEmail=String(identity.email||'').trim().toLowerCase();
+  if(!authenticatedUserEmail)throw new Error('No authenticated identity');
+  if(profile.email.trim().toLowerCase()!==authenticatedUserEmail){
+   profile={name:'',email:authenticatedUserEmail,photo:''};
+   localStorage.setItem(PROFILEKEY,JSON.stringify(profile));
+  }
+  if(typeof renderProfile==='function')renderProfile();
+  if(typeof updateProfileButton==='function')updateProfileButton();
+ }catch(_){
+  authenticatedUserEmail='';
+  profile={name:'',email:'',photo:''};
+  if(typeof renderProfile==='function')renderProfile();
+  if(typeof updateProfileButton==='function')updateProfileButton();
+ }
+}
+loadAuthenticatedIdentity();
 function initialsFor(name,email){const source=(name||email||'YOU').trim();const bits=source.includes('@')?source.split('@')[0].split(/[._ -]+/):source.split(/\s+/);return bits.slice(0,2).map(x=>x[0]||'').join('').toUpperCase()||'YOU'}
 function renderProfile(){
  $('profileName').value=profile.name||'';$('profileEmail').value=profile.email||'';
@@ -1239,8 +1260,11 @@ if(scheduleNote){const note=document.createElement('p');note.className='sub';not
 
 /* Profile is an optional corner-button panel, not a permanent dashboard card. */
 function updateProfileButton(){
- const label=profile.name||'My profile';$('profileButtonName').textContent=label;
- const initials=initialsFor(profile.name,profile.email),mini=$('miniAvatar');
+ const isMyProfile=!!authenticatedUserEmail&&profile.email.trim().toLowerCase()===authenticatedUserEmail;
+ const label=isMyProfile?(profile.name||authenticatedUserEmail):'Sign in required';
+ $('profileButtonName').textContent=label;
+ const initials=isMyProfile?initialsFor(profile.name,profile.email):'';
+ const mini=$('miniAvatar');
  if(profile.photo){mini.replaceChildren();const avatar=document.createElement('img');avatar.alt='';avatar.src=profile.photo;mini.appendChild(avatar)}else{mini.textContent=initials}
 }
 function setProfileOpen(open){
