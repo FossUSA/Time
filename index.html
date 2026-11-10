@@ -873,7 +873,7 @@ html.mytime-cloud-pending main.shell{visibility:hidden!important;pointer-events:
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);const KEY='foss-time-v1';const SETKEY='foss-time-settings-v1';const todayKey=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};let data=load(KEY,{}),settings=load(SETKEY,{startTime:'08:00',endTime:'17:00',lunchStart:'11:30',lunchEnd:'12:30',morningBreakTime:'10:00',afternoonBreakTime:'15:00',goalHours:8,timezone:'local'});function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
-let cloudSyncReady=false,cloudSyncBusy=false,cloudSyncDirty=false,cloudSyncTimer=null,cloudSyncBlocked=false,cloudRevision=0,cloudHydrating=false,cloudBasePayload=null;
+let cloudSyncReady=false,cloudSyncBusy=false,cloudSyncDirty=false,cloudSyncTimer=null,cloudSyncBlocked=false,cloudRevision=0,cloudHydrating=false,cloudBasePayload=null,cloudSyncRetryCount=0,cloudSyncRetryPending=false;
 const nativeStorageSetItem=Storage.prototype.setItem;
 Storage.prototype.setItem=function(key,value){nativeStorageSetItem.call(this,key,value);if(this===localStorage&&String(key).startsWith('foss-time-')&&!cloudHydrating)queueCloudSync()};
 const nativeStorageRemoveItem=Storage.prototype.removeItem;
@@ -958,10 +958,11 @@ function mergeCloudPayload(base,local,remote){
 function emptyCloudPayload(){
  return {records:{},settings:{startTime:'08:00',endTime:'17:00',lunchStart:'11:30',lunchEnd:'12:30',morningBreakTime:'10:00',afternoonBreakTime:'15:00',goalHours:8,timezone:'local'},bankEntries:[],profile:{name:'',email:typeof authenticatedUserEmail==='string'?authenticatedUserEmail:'',photo:''},theme:'light',localState:{}};
 }
-function queueCloudSync(){if(!cloudSyncReady||cloudSyncBlocked)return;cloudSyncDirty=true;clearTimeout(cloudSyncTimer);cloudSyncTimer=setTimeout(syncCloudNow,500)}
+function queueCloudSync(){if(!cloudSyncReady||cloudSyncBlocked)return;cloudSyncDirty=true;cloudSyncRetryPending=false;clearTimeout(cloudSyncTimer);cloudSyncTimer=setTimeout(syncCloudNow,500)}
 async function syncCloudNow(){
  if(!cloudSyncReady||cloudSyncBlocked)return false;
  if(cloudSyncBusy){cloudSyncDirty=true;return false}
+ clearTimeout(cloudSyncTimer);cloudSyncRetryPending=false;
  cloudSyncBusy=true;cloudSyncDirty=false;
  try{
   let payload=cloneCloudValue(cloudPayload());
@@ -969,7 +970,7 @@ async function syncCloudNow(){
    const r=await fetch('/api/records',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({payload,expectedRevision:cloudRevision})});
    const j=await r.json().catch(()=>({}));
    if(r.status===409||j.conflict){
-    if(attempt===3)throw new Error('Cloud kept changing while saving. Your edits are still here; try saving again in a moment.');
+    if(attempt===3)throw new Error('Cloud kept changing while saving. Your edits are still here; automatic retry is scheduled.');
     setSaveStatus(false,'Cloud updated elsewhere · merging changes safely…');
     const latestResponse=await fetch('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
     const latest=await latestResponse.json().catch(()=>({}));
@@ -986,6 +987,7 @@ async function syncCloudNow(){
    if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));
    cloudRevision=Number(j.revision||cloudRevision+1);
    cloudBasePayload=cloneCloudValue(payload);
+   cloudSyncRetryCount=0;cloudSyncRetryPending=false;
    window.myTimeAutoCloudConnected=true;
    const root=$('saveStatus'),label=$('saveStatusText');
    if(root&&label){root.classList.remove('save-status-error');root.classList.add('save-status-ok');label.textContent='Cloud saved · '+(j.email||'your FOSS account');root.title='Confirmed saved in your Cloudflare D1 account. Latest cloud revision '+cloudRevision+'.'}
@@ -994,16 +996,37 @@ async function syncCloudNow(){
   throw new Error('Cloud save retry limit reached. Your edits have not been discarded.');
  }catch(e){
   window.myTimeAutoCloudConnected=false;
+  cloudSyncDirty=true;
+  cloudSyncRetryCount=Math.min(cloudSyncRetryCount+1,6);
+  cloudSyncRetryPending=true;
+  const delay=Math.min(30000,1000*Math.pow(2,cloudSyncRetryCount));
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer=setTimeout(()=>{cloudSyncRetryPending=false;syncCloudNow()},delay);
   const root=$('saveStatus'),label=$('saveStatusText');
-  if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent=cloudSyncBlocked?'Cloud updated elsewhere · click to reload':'Cloud save needs retry';root.title=e.message}
-  console.warn('myTIME Cloudflare save failed:',e);
+  if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent='Cloud save failed · retrying automatically';root.title=(e?.message||'Cloudflare save failed')+' · next retry in '+Math.round(delay/1000)+' seconds.'}
+  console.warn('myTIME Cloudflare save failed; retry scheduled:',e);
   return false;
  }finally{
   cloudSyncBusy=false;
-  if(cloudSyncDirty&&!cloudSyncBlocked){clearTimeout(cloudSyncTimer);cloudSyncTimer=setTimeout(syncCloudNow,300)}
+  if(cloudSyncDirty&&!cloudSyncBlocked&&!cloudSyncRetryPending){clearTimeout(cloudSyncTimer);cloudSyncTimer=setTimeout(syncCloudNow,300)}
  }
 }
-window.myTimeFlushCloudSync=async function(){if(!cloudSyncReady||!window.myTimeAutoCloudConnected)throw new Error('Cloudflare has not confirmed a save. The weekly report was not sent.');clearTimeout(cloudSyncTimer);while(cloudSyncBusy)await new Promise(resolve=>setTimeout(resolve,100));if(cloudSyncDirty)await syncCloudNow();if(!window.myTimeAutoCloudConnected||cloudSyncBlocked)throw new Error('Cloud save failed or another computer has newer data; weekly report was not sent.');return true};
+window.myTimeFlushCloudSync=async function(){
+ if(!cloudSyncReady)throw new Error('Cloudflare is not ready; the change has not been confirmed saved.');
+ for(let attempt=0;attempt<8;attempt++){
+  clearTimeout(cloudSyncTimer);cloudSyncRetryPending=false;
+  while(cloudSyncBusy)await new Promise(resolve=>setTimeout(resolve,50));
+  if(cloudSyncBlocked)throw new Error('Cloud updates are paused until the latest cloud copy is loaded.');
+  if(cloudSyncDirty){
+   const saved=await syncCloudNow();
+   if(!saved)throw new Error('Cloud save failed. Your edit is retained locally and will retry automatically.');
+   continue;
+  }
+  if(!window.myTimeAutoCloudConnected)throw new Error('Cloudflare has not confirmed the latest save.');
+  if(!cloudSyncBusy&&!cloudSyncDirty)return true;
+ }
+ throw new Error('Cloud kept changing during the save. Your edit is retained and will retry automatically.');
+};
 async function initCloudSync() {
  clearTimeout(cloudSyncTimer);
  cloudSyncReady=false;
@@ -1055,22 +1078,30 @@ async function retryCloudSync(){
  const root=$('saveStatus'),label=$('saveStatusText');
  if(cloudRetryBusy)return;
  cloudRetryBusy=true;
- clearTimeout(cloudSyncTimer);
- cloudSyncReady=false;
- cloudSyncBlocked=true;
- cloudSyncDirty=false;
  if(root)root.setAttribute('aria-busy','true');
- if(label)label.textContent='Loading latest Cloudflare D1 copy…';
  try{
-  setCloudStartupGate(false,'Loading the latest timecard directly from Cloudflare D1…');
-  const loaded=await initCloudSync();
-  if(!loaded)throw new Error('The latest Cloudflare copy could not be loaded. No local data was uploaded.');
+  if(cloudSyncReady&&cloudSyncDirty){
+   /* A retry click must save pending edits first, never replace them with a
+      cloud snapshot. The normal sync path also performs a safe 409 rebase. */
+   cloudSyncBlocked=false;cloudSyncRetryPending=false;clearTimeout(cloudSyncTimer);
+   if(label)label.textContent='Retrying your pending save safely…';
+   let saved=false;
+   for(let attempt=0;attempt<8;attempt++){
+    while(cloudSyncBusy)await new Promise(resolve=>setTimeout(resolve,50));
+    if(!cloudSyncDirty){saved=true;break}
+    saved=await syncCloudNow();
+    if(!saved)break;
+   }
+   if(!saved||cloudSyncDirty||!window.myTimeAutoCloudConnected)throw new Error('Your pending changes are still retained. Cloudflare will retry automatically.');
+  }else{
+   if(label)label.textContent='Loading the latest Cloudflare D1 copy…';
+   const loaded=await initCloudSync();
+   if(!loaded)throw new Error('The latest Cloudflare copy could not be loaded. No local data was uploaded.');
+  }
  }catch(error){
-  cloudSyncReady=false;
-  cloudSyncBlocked=false;
   window.myTimeAutoCloudConnected=false;
-  setSaveStatus(false,'Cloud reload failed · click to retry');
-  console.warn('myTIME cloud reload failed:',error);
+  setSaveStatus(false,'Cloud connection needs attention · pending data kept');
+  console.warn('myTIME cloud retry failed:',error);
  }finally{
   cloudRetryBusy=false;
   if(root)root.removeAttribute('aria-busy');
@@ -1084,7 +1115,7 @@ function renderWorkSettingsSummary(){$('summaryStart').textContent=humanTime(set
 function openWorkSettings(open){$('workSettingsPanel').hidden=!open;$('workSettingsSummary').hidden=open;if(open)$('startTime').focus()}
 $('openWorkSettings').onclick=()=>openWorkSettings(true);
 $('cancelSettings').onclick=()=>{applySettings();openWorkSettings(false)};
-function day(){return data[todayKey()]||(data[todayKey()]={punches:[],audit:[]})}function parseTime(s){let [h,m]=s.split(':').map(Number);return h*60+m}function fmtMin(n){n=Math.max(0,Math.floor(n));return Math.floor(n/60)+'h '+String(n%60).padStart(2,'0')+'m'}function fmtDate(d){return new Intl.DateTimeFormat(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(d)}function fmtClock(d){return new Intl.DateTimeFormat(settings.timezone==='UTC'?'en-US':undefined,{hour:'numeric',minute:'2-digit',second:'2-digit',...(settings.timezone==='UTC'?{timeZone:'UTC'}:{})}).format(d)}function fmtTime(ts){return new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(new Date(ts))}function paidMs(rec,now=Date.now()){let p=rec?.punches||[],ms=0,start=null;for(const x of p){if(x.type==='in')start=x.ts;if(x.type==='lunch-start'&&start){ms+=Math.max(0,x.ts-start);start=null}if(x.type==='lunch-end')start=x.ts;if(x.type==='out'&&start){ms+=Math.max(0,x.ts-start);start=null}}if(start)ms+=Math.max(0,now-start);return ms}function lunchMs(rec,now=Date.now()){let p=rec?.punches||[],s=null,ms=0;for(const x of p){if(x.type==='lunch-start')s=x.ts;if(x.type==='lunch-end'&&s){ms+=x.ts-s;s=null}}if(s)ms+=now-s;return ms}function currentState(){let p=day().punches.filter(x=>!['morning-break-start','morning-break-end','afternoon-break-start','afternoon-break-end'].includes(x.type));return p.length?p[p.length-1].type:'none'}function active15MinuteBreak(rec=day()){let p=rec.punches||[],active=null;for(const x of p){if(x.type==='morning-break-start')active={key:'morning',start:x.ts};if(x.type==='morning-break-end'&&active?.key==='morning')active=null;if(x.type==='afternoon-break-start')active={key:'afternoon',start:x.ts};if(x.type==='afternoon-break-end'&&active?.key==='afternoon')active=null}return active}function next15MinuteBreak(rec=day()){let p=rec.punches||[];for(const key of ['morning','afternoon'])if(!p.some(x=>x.type===key+'-break-start'))return key;return null}function projectedFinish(){let p=day().punches,first=p.find(x=>x.type==='in');if(!first)return null;let start=first.ts,goal=settings.goalHours*3600000,breakPlanned=Math.max(0,parseTime(settings.lunchEnd)-parseTime(settings.lunchStart))*60000;let lunchStarted=p.some(x=>x.type==='lunch-start'),lunchEnded=p.some(x=>x.type==='lunch-end'),lunchActual=lunchMs(day());let remainingLunch=lunchEnded?0:Math.max(0,breakPlanned-lunchActual);let elapsed=paidMs(day());let finish=Date.now()+Math.max(0,goal-elapsed)+remainingLunch;return new Date(finish)}function punch(type){let r=day(),last=currentState(),now=Date.now();if(type==='15-break-start'){if(!['in','lunch-end'].includes(last)){alert('Clock in and return from lunch before starting a 15-minute break.');return}if(active15MinuteBreak(r)){alert('End your current 15-minute break first.');return}const key=next15MinuteBreak(r);if(!key){alert('Both 15-minute breaks already have start punches today.');return}type=key+'-break-start';r.breakStatus=r.breakStatus||{};r.breakTimes=r.breakTimes||{};r.breakStatus[key]='taken';r.breakTimes[key]=r.breakTimes[key]||{};r.breakTimes[key].start=new Date(now).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}else if(type==='15-break-end'){const active=active15MinuteBreak(r);if(!active){alert('There is no active 15-minute break to end.');return}type=active.key+'-break-end';r.breakTimes=r.breakTimes||{};r.breakTimes[active.key]=r.breakTimes[active.key]||{};r.breakTimes[active.key].end=new Date(now).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false})}else{let allowed={none:['in'],'in':['lunch-start','out'],'lunch-start':['lunch-end'],'lunch-end':['lunch-start','out'],out:[]};if(!allowed[last]?.includes(type)){alert('That punch is not available in the current shift sequence.');return}}r.punches.push({type,ts:now});r.breakStatus=r.breakStatus||{};r.breakTimes=r.breakTimes||{};const clockText=new Date(now).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});if(type==='lunch-start'){r.breakStatus.lunch='taken';r.breakTimes.lunch=r.breakTimes.lunch||{};r.breakTimes.lunch.start=clockText}if(type==='lunch-end'){r.breakStatus.lunch='taken';r.breakTimes.lunch=r.breakTimes.lunch||{};r.breakTimes.lunch.end=clockText}if(type==='morning-break-start'||type==='afternoon-break-start'){const key=type.startsWith('morning')?'morning':'afternoon';r.breakStatus[key]='taken';r.breakTimes[key]=r.breakTimes[key]||{};r.breakTimes[key].start=clockText}if(type==='morning-break-end'||type==='afternoon-break-end'){const key=type.startsWith('morning')?'morning':'afternoon';r.breakStatus[key]='taken';r.breakTimes[key]=r.breakTimes[key]||{};r.breakTimes[key].end=clockText}save();render();if(typeof renderMyTimeCalendar==='function'&&document.getElementById('myTimeCalendarRoot'))renderMyTimeCalendar();if(type==='out'&&new Date(now).getDay()===5&&typeof window.myTimeSendFridayReport==='function')window.myTimeFlushCloudSync().then(()=>window.myTimeSendFridayReport()).catch(e=>console.error('Friday report delivery failed',e))}function typeName(t){return ({in:'Clock in', 'lunch-start':'Lunch started','lunch-end':'Lunch ended',out:'Clock out','morning-break-start':'Morning 15-minute break started','morning-break-end':'Morning 15-minute break ended','afternoon-break-start':'Afternoon 15-minute break started','afternoon-break-end':'Afternoon 15-minute break ended'})[t]||t}function renderTimeline(){const p=day().punches||[],box=$('timeline');box.innerHTML='';if(!p.length){box.innerHTML='<div class="empty">No punches yet. Clock in to begin your day.</div>';return}const strip=document.createElement('div');strip.className='punch-strip';strip.setAttribute('aria-label',"Today's punches in chronological order");p.forEach(x=>{const chip=document.createElement('div');chip.className='punch-chip';const label=document.createElement('span'),time=document.createElement('strong');label.textContent=typeName(x.type);time.textContent=fmtTime(x.ts);chip.append(label,time);strip.appendChild(chip)});box.appendChild(strip)}function renderMonth(){let month=$('monthFilter').value||todayKey().slice(0,7),rows=Object.keys(data).filter(k=>k.startsWith(month)).sort().reverse(),body=$('monthRows');body.innerHTML='';let total=0;rows.forEach(k=>{let r=data[k],p=r.punches||[],first=p.find(x=>x.type==='in'),last=[...p].reverse().find(x=>x.type==='out'),ls=p.find(x=>x.type==='lunch-start'),le=p.find(x=>x.type==='lunch-end'),ms=paidMs(r,last?.ts||Date.now());if(last)total+=ms;let tr=document.createElement('tr');tr.innerHTML='<td>'+k+'</td><td>'+(first?fmtTime(first.ts):'—')+'</td><td>'+(ls&&le?fmtMin((le.ts-ls.ts)/60000):ls?'In progress':'—')+'</td><td>'+(last?fmtTime(last.ts):'—')+'</td><td>'+fmtMin(ms/60000)+'</td><td>'+(last?'Complete':first?'In progress':'—')+'</td><td>'+(lateStartMinutes(k)>0?'Late '+fmtMin(lateStartMinutes(k)):'On time')+(recoveryNote(k)?'<small style="display:block;max-width:240px;white-space:normal">Make-up: '+recoveryNote(k).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</small>':'')+'</td>';body.appendChild(tr)});if(!rows.length)body.innerHTML='<tr><td colspan="7">No records for this month.</td></tr>';$('monthSummary').textContent=rows.length+' day(s) · '+fmtMin(total/60000)+' completed paid time · loaded from Cloudflare'}function updateBreakCountdown(){
+function clockTextAt(ts){const d=new Date(ts);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}function day(){return data[todayKey()]||(data[todayKey()]={punches:[],audit:[]})}function parseTime(s){let [h,m]=s.split(':').map(Number);return h*60+m}function fmtMin(n){n=Math.max(0,Math.floor(n));return Math.floor(n/60)+'h '+String(n%60).padStart(2,'0')+'m'}function fmtDate(d){return new Intl.DateTimeFormat(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(d)}function fmtClock(d){return new Intl.DateTimeFormat(settings.timezone==='UTC'?'en-US':undefined,{hour:'numeric',minute:'2-digit',second:'2-digit',...(settings.timezone==='UTC'?{timeZone:'UTC'}:{})}).format(d)}function fmtTime(ts){return new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(new Date(ts))}function paidMs(rec,now=Date.now()){let p=rec?.punches||[],ms=0,start=null;for(const x of p){if(x.type==='in')start=x.ts;if(x.type==='lunch-start'&&start){ms+=Math.max(0,x.ts-start);start=null}if(x.type==='lunch-end')start=x.ts;if(x.type==='out'&&start){ms+=Math.max(0,x.ts-start);start=null}}if(start)ms+=Math.max(0,now-start);return ms}function lunchMs(rec,now=Date.now()){let p=rec?.punches||[],s=null,ms=0;for(const x of p){if(x.type==='lunch-start')s=x.ts;if(x.type==='lunch-end'&&s){ms+=x.ts-s;s=null}}if(s)ms+=now-s;return ms}function currentState(){let p=day().punches.filter(x=>!['morning-break-start','morning-break-end','afternoon-break-start','afternoon-break-end'].includes(x.type));return p.length?p[p.length-1].type:'none'}function active15MinuteBreak(rec=day()){let p=rec.punches||[],active=null;for(const x of p){if(x.type==='morning-break-start')active={key:'morning',start:x.ts};if(x.type==='morning-break-end'&&active?.key==='morning')active=null;if(x.type==='afternoon-break-start')active={key:'afternoon',start:x.ts};if(x.type==='afternoon-break-end'&&active?.key==='afternoon')active=null}return active}function next15MinuteBreak(rec=day()){let p=rec.punches||[];for(const key of ['morning','afternoon'])if(!p.some(x=>x.type===key+'-break-start'))return key;return null}function projectedFinish(){let p=day().punches,first=p.find(x=>x.type==='in');if(!first)return null;let start=first.ts,goal=settings.goalHours*3600000,breakPlanned=Math.max(0,parseTime(settings.lunchEnd)-parseTime(settings.lunchStart))*60000;let lunchStarted=p.some(x=>x.type==='lunch-start'),lunchEnded=p.some(x=>x.type==='lunch-end'),lunchActual=lunchMs(day());let remainingLunch=lunchEnded?0:Math.max(0,breakPlanned-lunchActual);let elapsed=paidMs(day());let finish=Date.now()+Math.max(0,goal-elapsed)+remainingLunch;return new Date(finish)}function punch(type){let r=day(),last=currentState(),now=Date.now();if(type==='15-break-start'){if(!['in','lunch-end'].includes(last)){alert('Clock in and return from lunch before starting a 15-minute break.');return}if(active15MinuteBreak(r)){alert('End your current 15-minute break first.');return}const key=next15MinuteBreak(r);if(!key){alert('Both 15-minute breaks already have start punches today.');return}type=key+'-break-start';r.breakStatus=r.breakStatus||{};r.breakTimes=r.breakTimes||{};r.breakStatus[key]='taken';r.breakTimes[key]=r.breakTimes[key]||{};r.breakTimes[key].start=clockTextAt(now)}else if(type==='15-break-end'){const active=active15MinuteBreak(r);if(!active){alert('There is no active 15-minute break to end.');return}type=active.key+'-break-end';r.breakTimes=r.breakTimes||{};r.breakTimes[active.key]=r.breakTimes[active.key]||{};r.breakTimes[active.key].end=clockTextAt(now)}else{let allowed={none:['in'],'in':['lunch-start','out'],'lunch-start':['lunch-end'],'lunch-end':['lunch-start','out'],out:[]};if(!allowed[last]?.includes(type)){alert('That punch is not available in the current shift sequence.');return}}r.punches.push({type,ts:now});r.breakStatus=r.breakStatus||{};r.breakTimes=r.breakTimes||{};const clockText=clockTextAt(now);if(type==='lunch-start'){r.breakStatus.lunch='taken';r.breakTimes.lunch=r.breakTimes.lunch||{};r.breakTimes.lunch.start=clockText}if(type==='lunch-end'){r.breakStatus.lunch='taken';r.breakTimes.lunch=r.breakTimes.lunch||{};r.breakTimes.lunch.end=clockText}if(type==='morning-break-start'||type==='afternoon-break-start'){const key=type.startsWith('morning')?'morning':'afternoon';r.breakStatus[key]='taken';r.breakTimes[key]=r.breakTimes[key]||{};r.breakTimes[key].start=clockText}if(type==='morning-break-end'||type==='afternoon-break-end'){const key=type.startsWith('morning')?'morning':'afternoon';r.breakStatus[key]='taken';r.breakTimes[key]=r.breakTimes[key]||{};r.breakTimes[key].end=clockText}save();render();if(typeof renderMyTimeCalendar==='function'&&document.getElementById('myTimeCalendarRoot'))renderMyTimeCalendar();if(type==='out'&&new Date(now).getDay()===5&&typeof window.myTimeSendFridayReport==='function')window.myTimeFlushCloudSync().then(()=>window.myTimeSendFridayReport()).catch(e=>console.error('Friday report delivery failed',e))}function typeName(t){return ({in:'Clock in', 'lunch-start':'Lunch started','lunch-end':'Lunch ended',out:'Clock out','morning-break-start':'Morning 15-minute break started','morning-break-end':'Morning 15-minute break ended','afternoon-break-start':'Afternoon 15-minute break started','afternoon-break-end':'Afternoon 15-minute break ended'})[t]||t}function renderTimeline(){const p=day().punches||[],box=$('timeline');box.innerHTML='';if(!p.length){box.innerHTML='<div class="empty">No punches yet. Clock in to begin your day.</div>';return}const strip=document.createElement('div');strip.className='punch-strip';strip.setAttribute('aria-label',"Today's punches in chronological order");p.forEach(x=>{const chip=document.createElement('div');chip.className='punch-chip';const label=document.createElement('span'),time=document.createElement('strong');label.textContent=typeName(x.type);time.textContent=fmtTime(x.ts);chip.append(label,time);strip.appendChild(chip)});box.appendChild(strip)}function renderMonth(){let month=$('monthFilter').value||todayKey().slice(0,7),rows=Object.keys(data).filter(k=>k.startsWith(month)).sort().reverse(),body=$('monthRows');body.innerHTML='';let total=0;rows.forEach(k=>{let r=data[k],p=r.punches||[],first=p.find(x=>x.type==='in'),last=[...p].reverse().find(x=>x.type==='out'),ls=p.find(x=>x.type==='lunch-start'),le=p.find(x=>x.type==='lunch-end'),ms=paidMs(r,last?.ts||Date.now());if(last)total+=ms;let tr=document.createElement('tr');tr.innerHTML='<td>'+k+'</td><td>'+(first?fmtTime(first.ts):'—')+'</td><td>'+(ls&&le?fmtMin((le.ts-ls.ts)/60000):ls?'In progress':'—')+'</td><td>'+(last?fmtTime(last.ts):'—')+'</td><td>'+fmtMin(ms/60000)+'</td><td>'+(last?'Complete':first?'In progress':'—')+'</td><td>'+(lateStartMinutes(k)>0?'Late '+fmtMin(lateStartMinutes(k)):'On time')+(recoveryNote(k)?'<small style="display:block;max-width:240px;white-space:normal">Make-up: '+recoveryNote(k).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</small>':'')+'</td>';body.appendChild(tr)});if(!rows.length)body.innerHTML='<tr><td colspan="7">No records for this month.</td></tr>';$('monthSummary').textContent=rows.length+' day(s) · '+fmtMin(total/60000)+' completed paid time · loaded from Cloudflare'}function updateBreakCountdown(){
  const box=$('breakCountdown');if(!box)return;
  const r=day(),state=currentState(),active=active15MinuteBreak(r);
  let title='',start=0,duration=0;
@@ -1795,16 +1826,17 @@ function renderMyTimeCalendar(){
    inp.setAttribute('aria-label',label+' '+(part==='start'?'start time':'end time'));
    inp.title='Enter a time such as 9:45 AM or 14:30';
    let lastSavedValue=stored,commitTimer=null;
-   const commitBreakTime=()=>{
+   const commitBreakTime=(formatValue=false)=>{
     const value=normalizeCalendarBreakTime(inp.value);
-    if(value===null){inp.setAttribute('aria-invalid','true');inp.title='Please enter a valid time such as 9:45 AM or 14:30';return false}
+    if(value===null){if(formatValue)inp.setAttribute('aria-invalid','true');return false}
     inp.removeAttribute('aria-invalid');inp.title='Enter a time such as 9:45 AM or 14:30';
-    if(value===lastSavedValue){inp.value=displayCalendarBreakTime(value);return true}
+    if(value===lastSavedValue){if(formatValue)inp.value=displayCalendarBreakTime(value);return true}
     const rec=ensureBreakFields(selectedKey);rec.breakTimes[name][part]=value;lastSavedValue=value;
-    inp.value=displayCalendarBreakTime(value);save();renderCalendarIntervalAnalysis(selectedKey,rec);confirmCalendarBreakSave(selectedKey);return true;
+    if(formatValue)inp.value=displayCalendarBreakTime(value);
+    save();renderCalendarIntervalAnalysis(selectedKey,rec);confirmCalendarBreakSave(selectedKey);return true;
    };
-   inp.addEventListener('input',()=>{inp.removeAttribute('aria-invalid');clearTimeout(commitTimer);commitTimer=setTimeout(commitBreakTime,700)});
-   inp.addEventListener('change',commitBreakTime);inp.addEventListener('blur',commitBreakTime);
+   inp.addEventListener('input',()=>{inp.removeAttribute('aria-invalid');clearTimeout(commitTimer);commitTimer=setTimeout(()=>commitBreakTime(false),1400)});
+   inp.addEventListener('change',()=>commitBreakTime(true));inp.addEventListener('blur',()=>commitBreakTime(true));
    inp.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(commitTimer);inp.blur()}});
    lab.appendChild(inp);times.appendChild(lab)
   });box.appendChild(times)}
@@ -1813,7 +1845,7 @@ function renderMyTimeCalendar(){
 }
 function calendarIntervalMinutes(rec,startType,endType,fallback){
  const p=rec?.punches||[],start=[...p].reverse().find(x=>x.type===startType),end=[...p].reverse().find(x=>x.type===endType);
- const parseClock=v=>{if(!v||!/^\\d{2}:\\d{2}$/.test(v))return null;const [h,m]=v.split(':').map(Number);return h*60+m};
+ const parseClock=v=>{if(!v||!/^\d{2}:\d{2}$/.test(v))return null;const [h,m]=v.split(':').map(Number);return h*60+m};
  const a=parseClock(fallback?.start),b=parseClock(fallback?.end);
  if(a!==null&&b!==null)return (b-a+1440)%1440;
  if(start?.ts&&end?.ts&&end.ts>=start.ts)return (end.ts-start.ts)/60000;
@@ -2071,7 +2103,7 @@ renderRecordManager();
   const weekFriday=new Date(now);weekFriday.setDate(now.getDate()-daysSinceFriday);weekFriday.setHours(12,0,0,0);
   const weekMonday=new Date(weekFriday);weekMonday.setDate(weekFriday.getDate()-4);
   const weekStart=dateKey(weekMonday),weekEnd=dateKey(weekFriday);
-  const all=Object.keys(data||{}).filter(k=>/^\\d{4}-\\d{2}-\\d{2}$/.test(k)).sort().map(recordFor);
+  const all=Object.keys(data||{}).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort().map(recordFor);
   const byDate=new Map(all.map(r=>[r.date,r]));
   const weekdays=Array.from({length:5},(_,i)=>{const d=new Date(weekMonday);d.setDate(weekMonday.getDate()+i);const k=dateKey(d);return byDate.get(k)||recordFor(k)});
   const records=c.event==='weekly-report'?weekdays:all;
