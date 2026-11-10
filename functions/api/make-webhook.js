@@ -42,10 +42,11 @@ export async function onRequestPost({ request, env }) {
     if (!weekEnding) return json({ error: "A valid weekly report end date is required." }, 400);
     deliveryKey = { email: accountEmail, weekEnding, event: "weekly_timecard_report" };
     await env.MYTIME_DB.prepare("CREATE TABLE IF NOT EXISTS mytime_report_delivery (account_email TEXT NOT NULL, week_ending TEXT NOT NULL, event TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (account_email, week_ending, event))").run();
-    const prior = await env.MYTIME_DB.prepare("SELECT status FROM mytime_report_delivery WHERE account_email = ? AND week_ending = ? AND event = ?").bind(deliveryKey.email, deliveryKey.weekEnding, deliveryKey.event).first();
+    const prior = await env.MYTIME_DB.prepare("SELECT status, updated_at FROM mytime_report_delivery WHERE account_email = ? AND week_ending = ? AND event = ?").bind(deliveryKey.email, deliveryKey.weekEnding, deliveryKey.event).first();
     if (prior?.status === "sent") return json({ ok: true, provider: "make", accepted: true, duplicate: true, message: "This weekly report was already delivered." });
-    if (prior?.status === "pending") return json({ error: "This weekly report is already being delivered. Check the delivery status before retrying." }, 409);
-    if (prior?.status === "failed") {
+    const pendingAge = prior?.updated_at ? Date.now() - Date.parse(prior.updated_at + "Z") : 0;
+    if (prior?.status === "pending" && pendingAge >= 0 && pendingAge < 10 * 60 * 1000) return json({ error: "This weekly report is already being delivered. Check the delivery status before retrying." }, 409);
+    if (prior?.status === "failed" || prior?.status === "pending") {
       await env.MYTIME_DB.prepare("UPDATE mytime_report_delivery SET status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE account_email = ? AND week_ending = ? AND event = ?").bind(deliveryKey.email, deliveryKey.weekEnding, deliveryKey.event).run();
     } else {
       await env.MYTIME_DB.prepare("INSERT OR IGNORE INTO mytime_report_delivery (account_email, week_ending, event, status) VALUES (?, ?, ?, 'pending')").bind(deliveryKey.email, deliveryKey.weekEnding, deliveryKey.event).run();

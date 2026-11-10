@@ -256,6 +256,73 @@ function buildMcpServer(env) {
       });
     },
   );
+  server.registerTool(
+    "mytime_correct_punch",
+    {
+      title: "Correct an existing myTIME punch",
+      description: "Approval-gated correction of one existing punch in the signed-in user's own cloud record. Requires mytime:write, a reason, and confirm=true. The operation is audited and uses an optimistic concurrency check; it never creates or deletes punches.",
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      inputSchema: z.object({
+        date: z.string().describe("Work date YYYY-MM-DD"),
+        sequence: z.number().int().min(1).describe("1-based position of the punch in the current day's chronological punch list"),
+        newType: z.enum(["in", "lunch-start", "lunch-end", "out", "morning-break-start", "morning-break-end", "afternoon-break-start", "afternoon-break-end"]),
+        newTimestamp: z.string().describe("Replacement timestamp as an ISO 8601 date-time with timezone, e.g. 2026-11-06T08:02:00-06:00"),
+        reason: z.string().min(8).max(500).describe("Reason for the correction; stored in the audit log"),
+        confirm: z.literal(true).describe("Must be explicitly true. ChatGPT should require a human approval for this destructive tool call."),
+      }),
+    },
+    async ({ date, sequence, newType, newTimestamp, reason, confirm }, context) => {
+      const scopes = context?.http?.authInfo?.scopes || [];
+      if (!scopes.includes("mytime:write")) {
+        return jsonText({ ok: false, error: "This connection has read-only permission. Reconnect FOSS myTIME and explicitly grant mytime:write before correcting a punch." });
+      }
+      if (confirm !== true) return jsonText({ ok: false, error: "Correction not applied: explicit confirmation is required." });
+      const workDate = normalizeDate(date, "");
+      const timestamp = Date.parse(newTimestamp);
+      if (!Number.isFinite(timestamp)) throw new Error("newTimestamp must be a valid ISO 8601 date-time.");
+      const normalizedTimestamp = new Date(timestamp).toISOString();
+      const account = await env.MYTIME_DB.prepare(
+        "SELECT payload, updated_at FROM mytime_user_data WHERE email = ?",
+      ).bind(email).first();
+      if (!account) throw new Error("No cloud record exists for the signed-in FOSS account.");
+      const payload = JSON.parse(account.payload);
+      const record = payload.records && payload.records[workDate];
+      if (!record || !Array.isArray(record.punches)) throw new Error("No punches exist for that work date.");
+      const ordered = [...record.punches].sort((a, b) => Number(a.ts) - Number(b.ts));
+      if (sequence > ordered.length) throw new Error("The selected punch sequence no longer exists. Refresh the timecard and try again.");
+      const oldPunch = ordered[sequence - 1];
+      const zone = payload.settings?.timezone && payload.settings.timezone !== "local" ? payload.settings.timezone : "America/Chicago";
+      const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
+      if (localDate !== workDate) throw new Error("The replacement timestamp must remain on the selected work date in the account timezone.");
+      if (timestamp > Date.now() + 5 * 60 * 1000) throw new Error("A punch cannot be corrected to a future time.");
+      const newPunch = { ...oldPunch, type: newType, ts: timestamp };
+      const corrected = ordered.map((p, index) => index === sequence - 1 ? newPunch : p)
+        .sort((a, b) => Number(a.ts) - Number(b.ts));
+      if (corrected.some((p, index) => index > 0 && Number(p.ts) <= Number(corrected[index - 1].ts))) {
+        throw new Error("Punch timestamps must be unique and strictly chronological.");
+      }
+      record.punches = corrected;
+      record.audit = Array.isArray(record.audit) ? record.audit : [];
+      record.audit.push({
+        at: Date.now(), action: "mcp-punch-correction", actor: email, reason: reason.trim(),
+        sequence, oldPunch: { type: oldPunch.type, ts: oldPunch.ts },
+        newPunch: { type: newType, ts: timestamp },
+      });
+      record.audit = record.audit.slice(-200);
+      const updated = await env.MYTIME_DB.prepare(
+        "UPDATE mytime_user_data SET payload = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ? AND updated_at = ?",
+      ).bind(JSON.stringify(payload), email, account.updated_at).run();
+      if (Number(updated.meta?.changes || 0) !== 1) {
+        throw new Error("The cloud record changed while this correction was being prepared. No change was made; refresh and retry.");
+      }
+      return jsonText({
+        ok: true, account: email, date: workDate, sequence,
+        oldPunch: { type: oldPunch.type, timestamp: oldPunch.ts ? new Date(Number(oldPunch.ts)).toISOString() : null },
+        newPunch: { type: newType, timestamp: normalizedTimestamp },
+        auditRecorded: true, updatedAt: new Date().toISOString(),
+      });
+    },
+  );
   return server;
 }
 
@@ -274,9 +341,11 @@ const defaultHandler = {
         const authRequest = await oauth.parseAuthRequest(request);
         const details = await oauth.describeConsent(authRequest);
         const consent = await oauth.beginConsent(authRequest);
-        const scopes = details.scope.map((scope) =>
-          '<label><input type="checkbox" name="scope" value="' + escapeHtml(scope) + '" checked> ' + escapeHtml(scope) + '</label>',
-        ).join("<br>");
+        const scopes = details.scope.map((scope) => {
+          const checked = scope === "mytime:write" ? "" : " checked";
+          const label = scope === "mytime:write" ? "mytime:write — allow approved punch corrections" : escapeHtml(scope);
+          return '<label><input type="checkbox" name="scope" value="' + escapeHtml(scope) + '"' + checked + '> ' + label + '</label>';
+        }).join("<br>");
         const publisher = details.clientDomain
           ? "Published by <strong>" + escapeHtml(details.clientDomain) + "</strong>."
           : "This client registered its own name; its publisher domain is not verified.";
