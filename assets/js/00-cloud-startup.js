@@ -1,0 +1,1 @@
+document.documentElement.classList.add("mytime-cloud-pending");

@@ -25,7 +25,7 @@ Read tools:
 - mytime_analyze_week
 
 Controlled write tool:
-- mytime_correct_punch — corrects one existing punch for the authenticated account only. It requires the separate `mytime:write` OAuth scope, a correction reason, and `confirm: true`. It writes an audit entry and uses an updated_at compare-and-swap check to prevent overwriting concurrent edits. It cannot add or delete punches. The consent screen leaves `mytime:write` unchecked by default. Configure ChatGPT to ask before every invocation where that control is available.
+- mytime_correct_punch — corrects one existing punch for the authenticated account only. It requires the separate `mytime:write` OAuth scope, a correction reason, and `confirm: true`. It writes an audit entry and uses an integer D1 revision compare-and-swap check to prevent overwriting concurrent edits. It cannot add or delete punches. The consent screen leaves `mytime:write` unchecked by default. Configure ChatGPT to ask before every invocation where that control is available.
 
 ## Weekly email delivery
 The active Make scenario `myTIME — Weekly Timecard Email Intake` uses the existing Microsoft 365 connection. Its recipient list is explicitly set to:

@@ -1,12 +1,17 @@
 {
   "name": "foss-mytime",
   "private": true,
-  "version": "1.1.0",
-  "description": "FOSS myTIME Pages application and OAuth-protected MCP service",
+  "version": "1.2.0",
+  "description": "FOSS myTIME Cloudflare Pages app, D1 records API, and OAuth-protected MCP service",
   "dependencies": {
     "agents": "0.31.0",
     "@modelcontextprotocol/server": "2.3.1",
     "@cloudflare/workers-oauth-provider": "^1.0.0",
     "zod": "^4.1.8"
+  },
+  "type": "module",
+  "scripts": {
+    "check": "node .github/scripts/audit.mjs",
+    "test": "node --test .github/tests/*.test.mjs && npm run check"
   }
 }

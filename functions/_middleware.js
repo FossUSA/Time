@@ -92,7 +92,7 @@ function buildMcpServer(env) {
     }
     return email;
   }
-  const server = new McpServer({ name: "FOSS myTIME", version: "1.1.0" });
+  const server = new McpServer({ name: "FOSS myTIME", version: "1.2.0" });
   server.registerTool(
     "mytime_status",
     { description: "Show the signed-in FOSS account, myTIME cloud-save status, goals and app URL. Read-only.", inputSchema: z.object({}) },
@@ -292,7 +292,7 @@ function buildMcpServer(env) {
       if (!Number.isFinite(timestamp)) throw new Error("newTimestamp must be a valid ISO 8601 date-time.");
       const normalizedTimestamp = new Date(timestamp).toISOString();
       const account = await env.MYTIME_DB.prepare(
-        "SELECT payload, updated_at FROM mytime_user_data WHERE email = ?",
+        "SELECT payload, updated_at, revision FROM mytime_user_data WHERE email = ?",
       ).bind(email).first();
       if (!account) throw new Error("No cloud record exists for the signed-in FOSS account.");
       const payload = JSON.parse(account.payload);
@@ -320,8 +320,8 @@ function buildMcpServer(env) {
       });
       record.audit = record.audit.slice(-200);
       const updated = await env.MYTIME_DB.prepare(
-        "UPDATE mytime_user_data SET payload = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ? AND updated_at = ?",
-      ).bind(JSON.stringify(payload), email, account.updated_at).run();
+        "UPDATE mytime_user_data SET payload = ?, updated_at = CURRENT_TIMESTAMP, revision = revision + 1 WHERE email = ? AND revision = ?",
+      ).bind(JSON.stringify(payload), email, Number(account.revision || 0)).run();
       if (Number(updated.meta?.changes || 0) !== 1) {
         throw new Error("The cloud record changed while this correction was being prepared. No change was made; refresh and retry.");
       }

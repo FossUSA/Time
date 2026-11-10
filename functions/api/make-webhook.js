@@ -1,3 +1,11 @@
+import { verifiedAccessEmail } from "../_shared/access-auth.js";
+
+export function isCalendarDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T12:00:00Z");
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export async function onRequestPost({ request, env }) {
   const origin = request.headers.get("Origin");
   if (!origin) return json({ error: "Missing origin" }, 403);
@@ -10,10 +18,9 @@ export async function onRequestPost({ request, env }) {
   )) {
     return json({ error: "Origin not allowed" }, 403);
   }
-  const accountEmail = (request.headers.get("Cf-Access-Authenticated-User-Email") || "").trim().toLowerCase();
-  if (!/^[^@\s]+@fossna\.com$/.test(accountEmail)) {
-    return json({ error: "A signed-in FOSS account is required." }, 401);
-  }
+  let accountEmail;
+  try { accountEmail = await verifiedAccessEmail(request); }
+  catch (error) { return json({ error: error?.message || "A signed-in FOSS account is required." }, 401); }
   if (!(request.headers.get("Content-Type") || "").toLowerCase().includes("application/json")) {
     return json({ error: "Content-Type must be application/json" }, 415);
   }
@@ -37,8 +44,12 @@ export async function onRequestPost({ request, env }) {
   let deliveryKey = null;
   if (isWeekly) {
     if (!env?.MYTIME_DB) return json({ error: "The cloud delivery ledger is unavailable." }, 503);
-    const dates = Array.isArray(body.payload.records) ? body.payload.records.map(r => String(r.date || "")).filter(d => /^\\d{4}-\\d{2}-\\d{2}$/.test(d)).sort() : [];
-    const weekEnding = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(body.payload.periodEnd || "")) ? body.payload.periodEnd : dates[dates.length - 1];
+    const dates = Array.isArray(body.payload.records)
+      ? body.payload.records.map(r => String(r.date || "")).filter(isCalendarDate).sort()
+      : [];
+    const weekEnding = isCalendarDate(String(body.payload.periodEnd || ""))
+      ? body.payload.periodEnd
+      : dates[dates.length - 1];
     if (!weekEnding) return json({ error: "A valid weekly report end date is required." }, 400);
     deliveryKey = { email: accountEmail, weekEnding, event: "weekly_timecard_report" };
     await env.MYTIME_DB.prepare("CREATE TABLE IF NOT EXISTS mytime_report_delivery (account_email TEXT NOT NULL, week_ending TEXT NOT NULL, event TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (account_email, week_ending, event))").run();

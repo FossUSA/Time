@@ -1,3 +1,5 @@
+import { verifiedAccessEmail } from "../_shared/access-auth.js";
+
 const ALLOWED_FLOW_HOSTS = [
   "logic.azure.com",
   "powerplatform.com",
@@ -15,17 +17,19 @@ function json(body, status = 200) {
   });
 }
 
-function allowedAppOrigin(origin) {
+export function allowedAppOrigin(origin) {
   try {
     const u = new URL(origin);
     return u.protocol === "https:" &&
-      (u.hostname === "foss-time.pages.dev" || u.hostname.endsWith(".foss-time.pages.dev"));
+      (u.hostname === "time.fossna.cloud" ||
+       u.hostname === "foss-time.pages.dev" ||
+       u.hostname.endsWith(".foss-time.pages.dev"));
   } catch {
     return false;
   }
 }
 
-function allowedFlowUrl(value) {
+export function allowedFlowUrl(value) {
   try {
     const u = new URL(value);
     const hostOk = ALLOWED_FLOW_HOSTS.some(host => u.hostname === host || u.hostname.endsWith("." + host));
@@ -40,6 +44,8 @@ export async function onRequestPost({ request }) {
   if (!allowedAppOrigin(origin)) {
     return json({ error: "Requests must come from the official FOSS myTIME site." }, 403);
   }
+  try { await verifiedAccessEmail(request); }
+  catch (error) { return json({ error: error?.message || "A signed-in FOSS account is required." }, 401); }
 
   const type = request.headers.get("Content-Type") || "";
   if (!type.toLowerCase().startsWith("application/json")) {
