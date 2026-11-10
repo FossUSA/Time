@@ -1,0 +1,13 @@
+name = "foss-mytime-pages"
+pages_build_output_dir = "./"
+compatibility_date = "2026-11-10"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+[[d1_databases]]
+binding = "MYTIME_DB"
+database_name = "foss-mytime-sync"
+database_id = "73dde185-64af-40c6-89cd-555125825665"
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "e96ae74f5edd40f1ab066fb57ca64613"

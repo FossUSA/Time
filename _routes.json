@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "include": [
+    "/",
+    "/index.html",
+    "/api/*",
+    "/authorize",
+    "/oauth/*",
+    "/.well-known/*"
+  ],
+  "exclude": []
+}

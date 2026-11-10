@@ -1,0 +1,18 @@
+{
+  "name": "myTIME by FOSS North America",
+  "short_name": "myTIME",
+  "description": "FOSS North America personal time clock and weekly timecard planner.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fc",
+  "theme_color": "#09266f",
+  "icons": [
+    {
+      "src": "/foss-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
