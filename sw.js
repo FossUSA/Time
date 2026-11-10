@@ -1,4 +1,4 @@
-const CACHE_NAME = 'foss-mytime-shell-v4';
+const CACHE_NAME = 'foss-mytime-shell-v5';
 const SHELL = ['/', '/index.html', '/manifest.json', '/foss-icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -12,7 +12,7 @@ self.addEventListener('install', event => {
 self.addEventListener('message', event => { if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting(); });
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    // v3 removes the old v2 cache, including any accidentally cached
+    // v5 removes the prior v4 cache, including any accidentally cached
     // /api/records snapshots that could pin the app to a stale D1 revision.
     const keys = await caches.keys();
     await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));

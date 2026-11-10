@@ -24,7 +24,7 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
 assert(html.includes("/assets/css/mytime.css?v=1.2.0"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v4"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v5"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
 assert(!/cache\.(?:put|add|addAll)\([^)]*api\//i.test(sw), "API responses must never be added to Cache Storage.");
