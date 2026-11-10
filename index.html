@@ -873,7 +873,7 @@ html.mytime-cloud-pending main.shell{visibility:hidden!important;pointer-events:
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);const KEY='foss-time-v1';const SETKEY='foss-time-settings-v1';const todayKey=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};let data=load(KEY,{}),settings=load(SETKEY,{startTime:'08:00',endTime:'17:00',lunchStart:'11:30',lunchEnd:'12:30',morningBreakTime:'10:00',afternoonBreakTime:'15:00',goalHours:8,timezone:'local'});function load(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
-let cloudSyncReady=false,cloudSyncBusy=false,cloudSyncDirty=false,cloudSyncTimer=null,cloudSyncBlocked=false,cloudRevision=0,cloudHydrating=false;
+let cloudSyncReady=false,cloudSyncBusy=false,cloudSyncDirty=false,cloudSyncTimer=null,cloudSyncBlocked=false,cloudRevision=0,cloudHydrating=false,cloudBasePayload=null;
 const nativeStorageSetItem=Storage.prototype.setItem;
 Storage.prototype.setItem=function(key,value){nativeStorageSetItem.call(this,key,value);if(this===localStorage&&String(key).startsWith('foss-time-')&&!cloudHydrating)queueCloudSync()};
 const nativeStorageRemoveItem=Storage.prototype.removeItem;
@@ -914,8 +914,95 @@ function setCloudStartupGate(loaded,message='Loading your timecard from Cloudfla
  if(retry)retry.hidden=!/could not load|unavailable|failed/i.test(message);
 }
 function setSaveStatus(ok,message){const root=$('saveStatus'),label=$('saveStatusText');if(!root||!label)return;root.classList.toggle('save-status-error',!ok);root.classList.toggle('save-status-ok',!!ok);label.textContent=message;root.title=ok?'Confirmed saved in your Cloudflare D1 account.':'Not confirmed in Cloudflare. Your browser copy is only temporary recovery data.'}
+function cloneCloudValue(value){return value===undefined?undefined:JSON.parse(JSON.stringify(value))}
+function cloudValueEqual(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function isCloudObject(value){return !!value&&typeof value==='object'&&!Array.isArray(value)}
+function mergeCloudValue(base,local,remote,key){
+ if(cloudValueEqual(local,base))return cloneCloudValue(remote);
+ if(cloudValueEqual(remote,base))return cloneCloudValue(local);
+ if(cloudValueEqual(local,remote))return cloneCloudValue(local);
+ if(Array.isArray(local)&&Array.isArray(remote)&&(key==='punches'||key==='audit')){
+  const merged=[],seen=new Set();
+  for(const item of [...remote,...local]){
+   const id=key==='punches'?String(item?.type||'')+'|'+String(item?.ts||''):JSON.stringify(item);
+   if(!seen.has(id)){seen.add(id);merged.push(cloneCloudValue(item))}
+  }
+  if(key==='punches')merged.sort((a,b)=>Number(a?.ts||0)-Number(b?.ts||0));
+  return merged;
+ }
+ if(isCloudObject(local)&&isCloudObject(remote)){
+  const baseObject=isCloudObject(base)?base:{},out={};
+  const keys=new Set([...Object.keys(baseObject),...Object.keys(local),...Object.keys(remote)]);
+  for(const name of keys){
+   const bh=Object.prototype.hasOwnProperty.call(baseObject,name);
+   const lh=Object.prototype.hasOwnProperty.call(local,name);
+   const rh=Object.prototype.hasOwnProperty.call(remote,name);
+   if(!lh){
+    if(!rh)continue;
+    if(!bh||!cloudValueEqual(remote[name],baseObject[name]))out[name]=cloneCloudValue(remote[name]);
+    continue;
+   }
+   if(!rh){
+    if(!bh||!cloudValueEqual(local[name],baseObject[name]))out[name]=cloneCloudValue(local[name]);
+    continue;
+   }
+   out[name]=mergeCloudValue(bh?baseObject[name]:undefined,local[name],remote[name],name);
+  }
+  return out;
+ }
+ return cloneCloudValue(local);
+}
+function mergeCloudPayload(base,local,remote){
+ return mergeCloudValue(base||{},local||{},remote||{},'payload');
+}
+function emptyCloudPayload(){
+ return {records:{},settings:{startTime:'08:00',endTime:'17:00',lunchStart:'11:30',lunchEnd:'12:30',morningBreakTime:'10:00',afternoonBreakTime:'15:00',goalHours:8,timezone:'local'},bankEntries:[],profile:{name:'',email:typeof authenticatedUserEmail==='string'?authenticatedUserEmail:'',photo:''},theme:'light',localState:{}};
+}
 function queueCloudSync(){if(!cloudSyncReady||cloudSyncBlocked)return;cloudSyncDirty=true;clearTimeout(cloudSyncTimer);cloudSyncTimer=setTimeout(syncCloudNow,500)}
-async function syncCloudNow(){if(!cloudSyncReady||cloudSyncBlocked)return;if(cloudSyncBusy){cloudSyncDirty=true;return}cloudSyncBusy=true;cloudSyncDirty=false;try{const payload=cloudPayload();const r=await fetch('/api/records',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({payload,expectedRevision:cloudRevision})});const j=await r.json().catch(()=>({}));if(r.status===409||j.conflict){cloudSyncBlocked=true;throw new Error('Cloud data changed on another computer. The latest D1 copy is protected. Click this status to load the latest cloud data; this browser copy will be replaced.')}if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));cloudRevision=Number(j.revision||cloudRevision+1);window.myTimeAutoCloudConnected=true;const root=$('saveStatus'),label=$('saveStatusText');if(root&&label){root.classList.remove('save-status-error');root.classList.add('save-status-ok');label.textContent='Cloud saved · '+(j.email||'your FOSS account');root.title='Confirmed saved in your Cloudflare D1 account. Latest cloud revision '+cloudRevision+'.'}}catch(e){window.myTimeAutoCloudConnected=false;const root=$('saveStatus'),label=$('saveStatusText');if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent=cloudSyncBlocked?'Cloud updated elsewhere · click to reload':'Not saved to Cloudflare · retry needed';root.title=e.message}console.warn('myTIME Cloudflare save failed:',e)}finally{cloudSyncBusy=false;if(cloudSyncDirty&&!cloudSyncBlocked){clearTimeout(cloudSyncTimer);cloudSyncTimer=setTimeout(syncCloudNow,300)}}}
+async function syncCloudNow(){
+ if(!cloudSyncReady||cloudSyncBlocked)return false;
+ if(cloudSyncBusy){cloudSyncDirty=true;return false}
+ cloudSyncBusy=true;cloudSyncDirty=false;
+ try{
+  let payload=cloneCloudValue(cloudPayload());
+  for(let attempt=0;attempt<4;attempt++){
+   const r=await fetch('/api/records',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({payload,expectedRevision:cloudRevision})});
+   const j=await r.json().catch(()=>({}));
+   if(r.status===409||j.conflict){
+    if(attempt===3)throw new Error('Cloud kept changing while saving. Your edits are still here; try saving again in a moment.');
+    setSaveStatus(false,'Cloud updated elsewhere · merging changes safely…');
+    const latestResponse=await fetch('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
+    const latest=await latestResponse.json().catch(()=>({}));
+    if(!latestResponse.ok||!latest.ok)throw new Error(latest.error||'Could not reload the latest Cloudflare data for a safe merge.');
+    const remote=latest.payload&&typeof latest.payload==='object'?latest.payload:emptyCloudPayload();
+    const localNow=cloneCloudValue(cloudPayload());
+    const rebased=mergeCloudPayload(cloudBasePayload||emptyCloudPayload(),localNow,remote);
+    cloudRevision=Number(latest.revision||0);
+    cloudBasePayload=cloneCloudValue(remote);
+    applyCloudPayload(rebased);
+    payload=cloneCloudValue(cloudPayload());
+    continue;
+   }
+   if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));
+   cloudRevision=Number(j.revision||cloudRevision+1);
+   cloudBasePayload=cloneCloudValue(payload);
+   window.myTimeAutoCloudConnected=true;
+   const root=$('saveStatus'),label=$('saveStatusText');
+   if(root&&label){root.classList.remove('save-status-error');root.classList.add('save-status-ok');label.textContent='Cloud saved · '+(j.email||'your FOSS account');root.title='Confirmed saved in your Cloudflare D1 account. Latest cloud revision '+cloudRevision+'.'}
+   return true;
+  }
+  throw new Error('Cloud save retry limit reached. Your edits have not been discarded.');
+ }catch(e){
+  window.myTimeAutoCloudConnected=false;
+  const root=$('saveStatus'),label=$('saveStatusText');
+  if(root&&label){root.classList.remove('save-status-ok');root.classList.add('save-status-error');label.textContent=cloudSyncBlocked?'Cloud updated elsewhere · click to reload':'Cloud save needs retry';root.title=e.message}
+  console.warn('myTIME Cloudflare save failed:',e);
+  return false;
+ }finally{
+  cloudSyncBusy=false;
+  if(cloudSyncDirty&&!cloudSyncBlocked){clearTimeout(cloudSyncTimer);cloudSyncTimer=setTimeout(syncCloudNow,300)}
+ }
+}
 window.myTimeFlushCloudSync=async function(){if(!cloudSyncReady||!window.myTimeAutoCloudConnected)throw new Error('Cloudflare has not confirmed a save. The weekly report was not sent.');clearTimeout(cloudSyncTimer);while(cloudSyncBusy)await new Promise(resolve=>setTimeout(resolve,100));if(cloudSyncDirty)await syncCloudNow();if(!window.myTimeAutoCloudConnected||cloudSyncBlocked)throw new Error('Cloud save failed or another computer has newer data; weekly report was not sent.');return true};
 async function initCloudSync() {
  clearTimeout(cloudSyncTimer);
@@ -930,6 +1017,7 @@ async function initCloudSync() {
   const j=await r.json().catch(()=>({}));
   if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));
   cloudRevision=Number(j.revision||0);
+  cloudBasePayload=cloneCloudValue(j.payload||emptyCloudPayload());
   if(j.payload){
    /* Never merge a stale browser copy into a cloud snapshot. */
    applyCloudPayload(j.payload);
@@ -1576,6 +1664,31 @@ else{payload={source:'myTIME',event:'full_backup',sentAt:new Date().toISOString(
 /* Monthly timesheet: local punch records only. Weekly schedule lives on its own tab. */
 let myTimeCalendarMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let myTimeSelectedDate = todayKey();
+function normalizeCalendarBreakTime(value){
+ const raw=String(value??'').trim().toUpperCase().replace(/\s+/g,' ');
+ if(!raw)return '';
+ const match=raw.match(/^(\d{1,2}):([0-5]\d)\s*(AM|PM)?$/);
+ if(!match)return null;
+ let hour=Number(match[1]),minute=Number(match[2]);
+ if(match[3]){if(hour<1||hour>12)return null;hour=(hour%12)+(match[3]==='PM'?12:0)}
+ else if(hour>23)return null;
+ return String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0');
+}
+function displayCalendarBreakTime(value){
+ return /^\d{2}:\d{2}$/.test(String(value||''))?humanTime(value):'';
+}
+function confirmCalendarBreakSave(dateKey){
+ const badge=document.getElementById('calendarSavedBadge');
+ if(badge&&myTimeSelectedDate===dateKey)badge.textContent='Saving to Cloudflare…';
+ if(typeof window.myTimeFlushCloudSync!=='function')return;
+ window.myTimeFlushCloudSync().then(()=>{
+  if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Cloudflare saved';
+ }).catch(error=>{
+  console.warn('myTIME break/lunch save was not confirmed:',error);
+  setSaveStatus(false,'Break/lunch not confirmed · click to retry');
+  if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Save needs attention';
+ });
+}
 function ensureBreakFields(k){
  const r=data[k]||(data[k]={punches:[],audit:[]});
  r.breakStatus=r.breakStatus||{};
@@ -1671,8 +1784,30 @@ function renderMyTimeCalendar(){
   const box=document.createElement('div');box.className='mytime-break-item';const h=document.createElement('strong');h.textContent=label;box.appendChild(h);
   const sel=document.createElement('select');sel.setAttribute('aria-label',label+' status');
   [['not-recorded','Not recorded'],['taken','Taken'],['skipped','Skipped']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;sel.appendChild(o)});
-  sel.value=breakRoot.breakStatus[name];sel.onchange=()=>{const rec=ensureBreakFields(myTimeSelectedDate);rec.breakStatus[name]=sel.value;save();renderMyTimeCalendar()};box.appendChild(sel);
-  {const times=document.createElement('div');times.className='mytime-break-times';['start','end'].forEach(part=>{const lab=document.createElement('label');lab.textContent=part==='start'?'Start time':'End time';const inp=document.createElement('input');inp.type='time';inp.step='60';inp.inputMode='numeric';inp.autocomplete='off';inp.value=breakRoot.breakTimes[name]?.[part]||'';inp.setAttribute('aria-label',label+' '+(part==='start'?'start time':'end time'));const selectedKey=myTimeSelectedDate;let lastSavedValue=inp.value;const commitBreakTime=()=>{const value=inp.value;if(value===lastSavedValue)return;const rec=ensureBreakFields(selectedKey);rec.breakTimes[name][part]=value;lastSavedValue=value;save();renderCalendarIntervalAnalysis(selectedKey,rec)};/* Do not rebuild the calendar while a native time control is being edited: Chromium emits input/change events as its hour/minute segments are completed, and replacing the input steals focus mid-entry. */inp.addEventListener('input',commitBreakTime);inp.addEventListener('change',commitBreakTime);lab.appendChild(inp);times.appendChild(lab)});box.appendChild(times)}
+  const selectedKey=myTimeSelectedDate;
+  sel.value=breakRoot.breakStatus[name];
+  sel.onchange=()=>{const rec=ensureBreakFields(selectedKey);rec.breakStatus[name]=sel.value;save();renderMyTimeCalendar();confirmCalendarBreakSave(selectedKey)};
+  box.appendChild(sel);
+  {const times=document.createElement('div');times.className='mytime-break-times';['start','end'].forEach(part=>{
+   const lab=document.createElement('label');lab.textContent=part==='start'?'Start time':'End time';
+   const inp=document.createElement('input');inp.type='text';inp.inputMode='text';inp.autocomplete='off';inp.spellcheck=false;inp.maxLength=8;
+   inp.placeholder='9:45 AM';const stored=breakRoot.breakTimes[name]?.[part]||'';inp.value=displayCalendarBreakTime(stored);
+   inp.setAttribute('aria-label',label+' '+(part==='start'?'start time':'end time'));
+   inp.title='Enter a time such as 9:45 AM or 14:30';
+   let lastSavedValue=stored,commitTimer=null;
+   const commitBreakTime=()=>{
+    const value=normalizeCalendarBreakTime(inp.value);
+    if(value===null){inp.setAttribute('aria-invalid','true');inp.title='Please enter a valid time such as 9:45 AM or 14:30';return false}
+    inp.removeAttribute('aria-invalid');inp.title='Enter a time such as 9:45 AM or 14:30';
+    if(value===lastSavedValue){inp.value=displayCalendarBreakTime(value);return true}
+    const rec=ensureBreakFields(selectedKey);rec.breakTimes[name][part]=value;lastSavedValue=value;
+    inp.value=displayCalendarBreakTime(value);save();renderCalendarIntervalAnalysis(selectedKey,rec);confirmCalendarBreakSave(selectedKey);return true;
+   };
+   inp.addEventListener('input',()=>{inp.removeAttribute('aria-invalid');clearTimeout(commitTimer);commitTimer=setTimeout(commitBreakTime,700)});
+   inp.addEventListener('change',commitBreakTime);inp.addEventListener('blur',commitBreakTime);
+   inp.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(commitTimer);inp.blur()}});
+   lab.appendChild(inp);times.appendChild(lab)
+  });box.appendChild(times)}
   controls.appendChild(box);
  });
 }
