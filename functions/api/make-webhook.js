@@ -11,7 +11,7 @@ export async function onRequestPost({ request, env }) {
     return json({ error: "Origin not allowed" }, 403);
   }
   const accountEmail = (request.headers.get("Cf-Access-Authenticated-User-Email") || "").trim().toLowerCase();
-  if (!/^[^@\\s]+@fossna\\.com$/.test(accountEmail)) {
+  if (!/^[^@\s]+@fossna\.com$/.test(accountEmail)) {
     return json({ error: "A signed-in FOSS account is required." }, 401);
   }
   if (!(request.headers.get("Content-Type") || "").toLowerCase().includes("application/json")) {
