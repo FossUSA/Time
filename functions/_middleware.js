@@ -95,6 +95,7 @@ function buildMcpServer(env) {
     "mytime_status",
     { description: "Show the signed-in FOSS account, myTIME cloud-save status, goals and app URL. Read-only.", inputSchema: z.object({}) },
     async (_args, extra) => {
+      const email = signedInEmail();
       const account = await loadAccount(env, email);
       return jsonText({
         account: email, app: APP_URL, cloudRecordFound: !!account.updatedAt,
@@ -116,6 +117,7 @@ function buildMcpServer(env) {
       }),
     },
     async ({ startDate, endDate }, extra) => {
+      const email = signedInEmail();
       const account = await loadAccount(env, email);
       const zone = account.settings.timezone && account.settings.timezone !== "local"
         ? account.settings.timezone : "America/Chicago";
@@ -156,6 +158,7 @@ function buildMcpServer(env) {
     "mytime_day_punches",
     { description: "List the signed-in user's clock, lunch and break punches for one date. Read-only.", inputSchema: z.object({ date: z.string().describe("Date YYYY-MM-DD") }) },
     async ({ date }, extra) => {
+      const email = signedInEmail();
       const day = normalizeDate(date, "");
       const account = await loadAccount(env, email);
       const record = account.records[day] || {};
@@ -215,6 +218,7 @@ function buildMcpServer(env) {
       }),
     },
     async ({ weekEnding }, extra) => {
+      const email = signedInEmail();
       const account = await loadAccount(env, email);
       const zone = account.settings.timezone && account.settings.timezone !== "local"
         ? account.settings.timezone : "America/Chicago";
@@ -272,6 +276,7 @@ function buildMcpServer(env) {
       }),
     },
     async ({ date, sequence, newType, newTimestamp, reason, confirm }, context) => {
+      const email = signedInEmail();
       const scopes = context?.http?.authInfo?.scopes || [];
       if (!scopes.includes("mytime:write")) {
         return jsonText({ ok: false, error: "This connection has read-only permission. Reconnect FOSS myTIME and explicitly grant mytime:write before correcting a punch." });
