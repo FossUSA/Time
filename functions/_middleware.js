@@ -87,7 +87,7 @@ function buildMcpServer(env) {
   function signedInEmail() {
     const auth = getMcpAuthContext();
     const email = String(auth?.props?.email || "").trim().toLowerCase();
-    if (!/^[^@\\s]+@fossna\\.com$/.test(email)) {
+    if (!/^[^@\s]+@fossna\.com$/.test(email)) {
       throw new Error("The OAuth grant does not contain an authorized FOSS account identity.");
     }
     return email;
