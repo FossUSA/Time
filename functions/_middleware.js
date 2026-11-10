@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
-import { OAuthProvider, AuthorizationError } from "@cloudflare/workers-oauth-provider";
+import { OAuthProvider, AuthorizationError, insufficientScope } from "@cloudflare/workers-oauth-provider";
 import { z } from "zod";
 
 const APP_URL = "https://time.fossna.cloud";
@@ -409,7 +409,20 @@ const defaultHandler = {
 const provider = new OAuthProvider({
   apiRoute: "/api/mcp",
   apiHandler: {
-    fetch(request, env, ctx) {
+    async fetch(request, env, ctx) {
+      if (!ctx.auth.scope.includes("mytime:read")) {
+        return insufficientScope(ctx.auth, ["mytime:read"]);
+      }
+      if (request.method === "POST") {
+        const body = await request.clone().json().catch(() => null);
+        const messages = Array.isArray(body) ? body : [body];
+        const requestsPunchCorrection = messages.some((message) =>
+          message?.method === "tools/call" && message?.params?.name === "mytime_correct_punch"
+        );
+        if (requestsPunchCorrection && !ctx.auth.scope.includes("mytime:write")) {
+          return insufficientScope(ctx.auth, ["mytime:read", "mytime:write"]);
+        }
+      }
       const handler = createMcpHandler(() => buildMcpServer(env), {
         route: "/api/mcp",
         allowedHostnames: ["mcp.fossna.cloud"],
