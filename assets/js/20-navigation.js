@@ -136,6 +136,10 @@ function calendarBreakSummary(record,includeEmpty=true){
  }).filter(Boolean);
  return lines.length?lines.join('\n'):'No documented lunch or break entries';
 }
+function hasDocumentedBreakRecord(record){
+ return calendarBreakSnapshot(record).some(([status,start,end])=>status!=='not-recorded'||!!start||!!end);
+}
+
 async function confirmCalendarBreakSave(dateKey){
  const badge=document.getElementById('calendarSavedBadge');
  if(badge&&myTimeSelectedDate===dateKey)badge.textContent='Saving to Cloudflare…';
@@ -160,7 +164,7 @@ async function confirmCalendarBreakSave(dateKey){
   console.warn('myTIME break/lunch read-back verification failed:',error);
   setSaveStatus(false,'Break/lunch save not verified · pending data kept');
   if(myTimeSelectedDate===dateKey&&badge&&badge.isConnected)badge.textContent='Save not verified · retry';
-  throw error;
+  return false;
  }
 }
 function ensureBreakFields(k){
@@ -218,14 +222,15 @@ function renderMyTimeCalendar(){
  for(let i=0;i<first.getDay();i++){const empty=document.createElement('div');empty.className='mytime-calendar-empty';empty.setAttribute('aria-hidden','true');calGrid.appendChild(empty)}
  let days=0,totalMs=0,scheduledMinutesTotal=0,punchTotal=0;
  keys.forEach(k=>{
-  const rec=calendarRecord(k),p=rec.punches||[],has=p.length>0,schedule=scheduleForDate(k),planned=plannedMinutes(schedule);
+  const rec=calendarRecord(k),p=rec.punches||[],hasPunches=p.length>0,hasBreakRecord=hasDocumentedBreakRecord(rec),has=hasPunches||hasBreakRecord,schedule=scheduleForDate(k),planned=plannedMinutes(schedule);
   scheduledMinutesTotal+=planned;
-  if(has){days++;punchTotal+=p.length;const out=[...p].reverse().find(x=>x.type==='out'),last=p[p.length-1];const end=out?.ts||(k===todayKey()?Date.now():last?.ts||Date.now());totalMs+=paidMs(rec,end)}
+  if(has)days++;
+  if(hasPunches){punchTotal+=p.length;const out=[...p].reverse().find(x=>x.type==='out'),last=p[p.length-1];const end=out?.ts||(k===todayKey()?Date.now():last?.ts||Date.now());totalMs+=paidMs(rec,end)}
 
-  const late=lateStartMinutes(k),note=recoveryNote(k);const status=rec.breakStatus||{},statusText=['morning','afternoon'].map(n=>({taken:'Taken',skipped:'Skipped','not-recorded':'Not recorded'}[status[n]||'not-recorded'])).join(' / ');
-  const d=new Date(k+'T12:00:00'),cell=document.createElement('button');cell.type='button';cell.className='mytime-calendar-day'+(has?' has-record':'')+(k===myTimeSelectedDate?' selected':'')+(k===todayKey()?' today':'');cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'})+(has?', '+p.length+' saved punch events':' , no saved punches'));cell.setAttribute('aria-pressed',k===myTimeSelectedDate?'true':'false');
+  const late=lateStartMinutes(k),note=recoveryNote(k),documentedBreaks=calendarBreakSummary(rec,false);
+  const d=new Date(k+'T12:00:00'),cell=document.createElement('button');cell.type='button';cell.className='mytime-calendar-day'+(has?' has-record':'')+(k===myTimeSelectedDate?' selected':'')+(k===todayKey()?' today':'');cell.setAttribute('role','gridcell');cell.setAttribute('aria-label',d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'})+(hasPunches?', '+p.length+' saved punch events':hasBreakRecord?', documented lunch and break entries':' , no saved records'));cell.setAttribute('aria-pressed',k===myTimeSelectedDate?'true':'false');
   const dateNum=document.createElement('strong');dateNum.textContent=String(d.getDate());cell.appendChild(dateNum);
-  if(has){const badge=document.createElement('span');badge.className='calendar-record-badge';badge.textContent=p.length+' punch'+(p.length===1?'':'es');cell.appendChild(badge);
+  if(has){const badge=document.createElement('span');badge.className='calendar-record-badge';badge.textContent=hasPunches?p.length+' punch'+(p.length===1?'':'es'):'Breaks documented';cell.appendChild(badge);
    const inTime=calendarPunchTime(rec,'in'),outTime=calendarPunchTime(rec,'out'),lunchOut=calendarPunchTime(rec,'lunch-start'),lunchIn=calendarPunchTime(rec,'lunch-end');
    if(inTime!=='—'){const line=document.createElement('small');line.className='calendar-day-punches';line.textContent='In '+inTime;cell.appendChild(line)}
    if(late>0){const line=document.createElement('small');line.className='calendar-day-late';line.textContent='Late start +'+fmtMin(late);cell.appendChild(line)}
@@ -233,8 +238,8 @@ function renderMyTimeCalendar(){
    if(outTime!=='—'){const line=document.createElement('small');line.className='calendar-day-punches';line.textContent='Out '+outTime;cell.appendChild(line)}
    if(lunchOut!=='—'||lunchIn!=='—'){const line=document.createElement('small');line.className='calendar-day-lunch';line.textContent='Lunch '+(lunchOut==='—'?'—':lunchOut)+' / '+(lunchIn==='—'?'—':lunchIn);cell.appendChild(line)}
    const paid=document.createElement('small');const paidMinutes=actualPaidMinutes(rec);paid.className='calendar-day-paid'+(paidMinutes>480?' is-over-eight':'');paid.textContent='Total paid: '+calendarPaid(k);cell.appendChild(paid);if(paidMinutes>480){const over=document.createElement('small');over.className='calendar-day-overtime';over.textContent='Over daily target: +'+fmtMin(paidMinutes-480);cell.appendChild(over)}
-   const breaks=document.createElement('small');breaks.className='calendar-day-breaks';breaks.textContent='Breaks: '+statusText;cell.appendChild(breaks);
-  } else {const noData=document.createElement('small');noData.className='calendar-no-record';noData.textContent='No punches';cell.appendChild(noData)}
+   if(hasBreakRecord){const breaks=document.createElement('small');breaks.className='calendar-day-breaks';breaks.textContent=documentedBreaks.replaceAll('\n',' · ');cell.appendChild(breaks)}
+  } else {const noData=document.createElement('small');noData.className='calendar-no-record';noData.textContent='No records';cell.appendChild(noData)}
   if(planned>0){const plan=document.createElement('small');plan.className='calendar-day-planned';plan.textContent='Planned '+fmtMin(planned);cell.appendChild(plan)}
 
   cell.onclick=()=>{myTimeSelectedDate=k;renderMyTimeCalendar()};calGrid.appendChild(cell);
@@ -246,10 +251,11 @@ function renderMyTimeCalendar(){
  document.getElementById('calendarPunchTotal').textContent=String(punchTotal);
  const selected=calendarRecord(myTimeSelectedDate),p=selected.punches||[],has=!!(data[myTimeSelectedDate]&&(p.length||(data[myTimeSelectedDate].breakStatus)||(data[myTimeSelectedDate].breakTimes)));
  document.getElementById('calendarSelectedTitle').textContent=new Date(myTimeSelectedDate+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
- document.getElementById('calendarSavedBadge').textContent=has?(window.myTimeAutoCloudConnected?'Cloudflare saved':'Awaiting Cloudflare confirmation'):'No saved record';
+ document.getElementById('calendarSavedBadge').textContent=has?(window.myTimeAutoCloudConnected?'Cloud record loaded · edits verify on save':'Awaiting Cloudflare confirmation'):'No saved record';
  const details=document.getElementById('calendarPunchDetails');details.innerHTML='';
  [['Clock in','in'],['Lunch out','lunch-start'],['Lunch in','lunch-end'],['Clock out','out']].forEach(([label,type])=>{const box=document.createElement('div');box.className='mytime-detail-item';const l=document.createElement('span'),v=document.createElement('strong');l.textContent=label;v.textContent=calendarPunchTime(selected,type);box.append(l,v);details.appendChild(box)});
- document.getElementById('calendarDaySummary').textContent=p.length?p.length+' punch event(s) saved · paid time '+calendarPaid(myTimeSelectedDate):'No punches saved for this date in your Cloudflare timecard.';
+ const breakSummary=calendarBreakSummary(data[myTimeSelectedDate],false);
+ document.getElementById('calendarDaySummary').textContent=[p.length?p.length+' clock punch event(s) · paid time '+calendarPaid(myTimeSelectedDate):'No clock punches saved',breakSummary!=='No documented lunch or break entries'?'Documented: '+breakSummary:''].filter(Boolean).join(' · ');
  renderCalendarIntervalAnalysis(myTimeSelectedDate,selected);
  const selectedSchedule=scheduleForDate(myTimeSelectedDate),selectedLate=lateStartMinutes(myTimeSelectedDate),recoverySummary=document.getElementById('calendarRecoverySummary');if(recoverySummary)recoverySummary.textContent=selectedLate>0?'Late start: '+fmtMin(selectedLate)+' (planned '+selectedSchedule.startTime+', actual '+calendarPunchTime(selected,'in')+'). Record the actual approved make-up action below.':(calendarPunchTime(selected,'in')!=='—'?'No late start detected against the planned '+selectedSchedule.startTime+'.':'No clock-in recorded; late start will be calculated once you clock in.');const noteInput=document.getElementById('calendarMakeUpNote');if(noteInput)noteInput.value=recoveryNote(myTimeSelectedDate);
  const breakRoot=has?ensureBreakFields(myTimeSelectedDate):{breakStatus:{lunch:'not-recorded',morning:'not-recorded',afternoon:'not-recorded'},breakTimes:{morning:{start:'',end:''},afternoon:{start:'',end:''}}};
@@ -328,6 +334,11 @@ function renderCalendarIntervalAnalysis(k,rec){
  const planned=Math.max(0,plannedMinutes(schedule)),out=[...p].reverse().find(x=>x.type==='out'),last=p[p.length-1];
  const paid=p.length?paidMs(rec,out?.ts||(k===todayKey()?Date.now():last?.ts||Date.now()))/60000:null;
  add('Total paid time',paid,planned,'Daily target: '+fmtMin(planned)+' · This is total paid time, not the amount over target',paid===null);
+ const summary=document.getElementById('calendarDaySummary');
+ if(summary&&myTimeSelectedDate===k){
+  const documented=calendarBreakSummary(rec,false);
+  summary.textContent=[p.length?p.length+' clock punch event(s) · paid time '+calendarPaid(k):'No clock punches saved',documented!=='No documented lunch or break entries'?'Documented: '+documented:''].filter(Boolean).join(' · ');
+ }
 }
 function calendarDateKeys(scope){
  const first=new Date(myTimeCalendarMonth.getFullYear(),myTimeCalendarMonth.getMonth(),1,12),count=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
@@ -345,7 +356,7 @@ function printCalendarReport(scope){
  return '<div class="calendar-print-day '+(!inside?'outside-month ':'')+(k===todayKey()?'is-today':'')+'"><div class="calendar-print-day-number">'+date.getDate()+'</div>'+(punches.length?punches.map(x=>'<div class="calendar-print-punch"><span class="calendar-print-dot">●</span> '+esc(x[0])+' '+esc(x[1])+'</div>').join(''):'<div class="calendar-print-punch">'+(inside?'No punches':'')+'</div>')+(documented!=='No documented lunch or break entries'?'<div class="calendar-print-breaks"><strong>Documented breaks</strong><br>'+esc(documented).replaceAll('\n','<br>')+'</div>':'')+'<div class="calendar-print-hours">'+esc(p.length?fmtMin(ms/60000):'0m')+'</div></div>'}).join('');
  const weekdays=(monthMode?['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']).map(d=>'<div class="calendar-print-weekday">'+d+'</div>').join(''),title=monthMode?first.toLocaleDateString(undefined,{month:'long',year:'numeric'}):'Weekly Timecard',range=first.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' – '+last.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}),name=(typeof profile!=='undefined'&&profile.name)||'Employee',generated=new Date().toLocaleString(),relevant=monthMode?keys.filter(k=>k.slice(0,7)===calendarKeyDate(first).slice(0,7)):keys;
  const recent=relevant.filter(k=>(data[k]?.punches||[]).length).slice(-5).map(k=>'<div class="calendar-print-stat"><span>'+esc(new Date(k+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}))+'</span><strong>'+esc(calendarPaid(k))+'</strong></div>').join('');
- report.innerHTML='<header class="calendar-print-head"><div class="calendar-print-brand"><img class="calendar-print-logo" src="https://www.fossanalytics.com/Design/static/foss-logo.png" alt="FOSS" onerror="this.style.display=\'none\'"><div><div class="calendar-print-brand-name">myTIME</div><div class="calendar-print-tagline">FOSS North America · Time & Attendance</div></div></div><div class="calendar-print-meta"><strong>'+esc(name)+'</strong>'+esc(Intl.DateTimeFormat().resolvedOptions().timeZone||'Local time')+'<br>Report period: '+esc(range)+'<br>Generated: '+esc(generated)+'</div></header><div class="calendar-print-title"><div><h1>'+esc(title)+'</h1><p>Time & attendance calendar · Locally saved punch records</p></div><strong>'+esc(range)+'</strong></div><div class="calendar-print-grid">'+weekdays+cells+'</div><section class="calendar-print-summary"><div class="calendar-print-card"><h2>Time Summary</h2><div class="calendar-print-stat"><span>Days with punches</span><strong>'+days+'</strong></div><div class="calendar-print-stat"><span>Punch events</span><strong>'+punchCount+'</strong></div><div class="calendar-print-stat total"><span>Total recorded paid time</span><strong>'+esc(fmtMin(totalMs/60000))+'</strong></div></div><div class="calendar-print-card"><h2>Recent Daily Totals</h2>'+(recent||'<div class="calendar-print-stat">No punch records saved</div>')+'<div class="calendar-print-stat total"><span>Period total</span><strong>'+esc(fmtMin(totalMs/60000))+'</strong></div></div><div class="calendar-print-card"><h2>Legend</h2><div class="calendar-print-legend"><span>● Punch event</span><span>Blue band: recorded time</span><span>Outlined day: today</span></div><p style="font-size:6.5pt;margin-top:7pt;color:#64718b">Blank days mean no punches are saved.</p></div></section><footer class="calendar-print-foot"><div><strong>TIME CLOCK RECORDS</strong><br>Verify times against your records. Not an official payroll document.</div><div style="text-align:right">FOSS North America · myTIME<br>Track Today. Build Tomorrow.</div></footer>';
+ report.innerHTML='<header class="calendar-print-head"><div class="calendar-print-brand"><img class="calendar-print-logo" src="https://www.fossanalytics.com/Design/static/foss-logo.png" alt="FOSS" onerror="this.style.display=\'none\'"><div><div class="calendar-print-brand-name">myTIME</div><div class="calendar-print-tagline">FOSS North America · Time & Attendance</div></div></div><div class="calendar-print-meta"><strong>'+esc(name)+'</strong>'+esc(Intl.DateTimeFormat().resolvedOptions().timeZone||'Local time')+'<br>Report period: '+esc(range)+'<br>Generated: '+esc(generated)+'</div></header><div class="calendar-print-title"><div><h1>'+esc(title)+'</h1><p>Time & attendance calendar · Cloud-saved punches and documented breaks</p></div><strong>'+esc(range)+'</strong></div><div class="calendar-print-grid">'+weekdays+cells+'</div><section class="calendar-print-summary"><div class="calendar-print-card"><h2>Time Summary</h2><div class="calendar-print-stat"><span>Days with punches</span><strong>'+days+'</strong></div><div class="calendar-print-stat"><span>Punch events</span><strong>'+punchCount+'</strong></div><div class="calendar-print-stat total"><span>Total recorded paid time</span><strong>'+esc(fmtMin(totalMs/60000))+'</strong></div></div><div class="calendar-print-card"><h2>Recent Daily Totals</h2>'+(recent||'<div class="calendar-print-stat">No punch records saved</div>')+'<div class="calendar-print-stat total"><span>Period total</span><strong>'+esc(fmtMin(totalMs/60000))+'</strong></div></div><div class="calendar-print-card"><h2>Legend</h2><div class="calendar-print-legend"><span>● Punch event</span><span>Blue band: recorded time</span><span>Outlined day: today</span></div><p style="font-size:6.5pt;margin-top:7pt;color:#64718b">Blank days mean no punches are saved.</p></div></section><footer class="calendar-print-foot"><div><strong>TIME CLOCK RECORDS</strong><br>Verify times against your records. Not an official payroll document.</div><div style="text-align:right">FOSS North America · myTIME<br>Track Today. Build Tomorrow.</div></footer>';
  document.body.classList.add('printing-calendar');const cleanup=()=>{document.body.classList.remove('printing-calendar');window.removeEventListener('afterprint',cleanup)};window.addEventListener('afterprint',cleanup);window.print();setTimeout(cleanup,2000)
 }
 function exportCalendarCsv(keys){
