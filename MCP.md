@@ -1,27 +1,37 @@
-# FOSS myTIME MCP Server
+# FOSS myTIME MCP and OAuth
 
-Endpoint: https://time.fossna.cloud/api/mcp
+## Endpoints
+- MCP Streamable HTTP: https://mcp.fossna.cloud/api/mcp
+- OAuth issuer: https://mcp.fossna.cloud
+- Authorization: https://mcp.fossna.cloud/authorize
+- Token endpoint: https://mcp.fossna.cloud/oauth/token
+- Protected-resource metadata: published by the OAuth provider for /api/mcp
 
-This MCP endpoint is served by Cloudflare Pages Functions using Cloudflare's stateless Agents SDK MCP handler.
+## Identity and authorization
+The OAuth authorization page is protected by Cloudflare Access at mcp.fossna.cloud/authorize. The Access application allows only the configured FOSS North America identity provider and @fossna.com email domain. The authenticated email is stored as the OAuth subject and encrypted token props. The MCP resource validates OAuth tokens and the resource audience before tools run.
 
-## Authentication and data isolation
-- The endpoint requires the Cloudflare Access identity header.
-- Only authenticated `@fossna.com` identities are accepted.
-- Every tool reads only the D1 row whose email exactly matches the authenticated identity.
-- The initial tool set is read-only. No clock punches, record edits, deletes, or email sends can be triggered through MCP.
+Scopes:
+- mytime:read — read only the authenticated user's records and schedule.
+- mytime:write — reserved for approval-gated record changes; do not grant until write approvals and audit handling are deployed and tested.
+- offline_access — refresh token access for supported clients.
 
-## Tools
-- `mytime_status`: identity, cloud record status, schedule targets.
-- `mytime_timecard_summary`: daily and aggregate paid time over a date range.
-- `mytime_day_punches`: detailed punch timeline for one date.
-- `mytime_schedule`: work schedule and break/lunch settings.
-- `mytime_time_bank`: time-bank entries.
+## Current MCP tools
+- mytime_status
+- mytime_timecard_summary
+- mytime_day_punches
+- mytime_schedule
+- mytime_time_bank
+- mytime_analyze_week
 
-## Connecting an MCP client
-Use Streamable HTTP with:
-`https://time.fossna.cloud/api/mcp`
+All current tools are read-only. Write actions are intentionally withheld until a per-action approval mechanism, audit log, concurrency protection, and end-to-end tests are in place.
 
-The client must complete Cloudflare Access authentication for the protected hostname. Do not share an Access service token or bypass the Access policy.
+## ChatGPT connection
+In ChatGPT web, open Settings > Apps (or Plugins, depending on the client UI), choose Add custom MCP server, and enter:
+- Name: FOSS myTIME
+- Server URL: https://mcp.fossna.cloud/api/mcp
+- Authentication: OAuth
 
-## Future extensions
-After testing and approval, add explicit write tools with confirmation/idempotency for corrections and punch actions; add email preview/test/send tools; and add a report resource for weekly/monthly exports.
+Complete the Cloudflare Access sign-in and review the requested scopes on the FOSS myTIME consent screen. ChatGPT must show the OAuth connection as connected before use.
+
+## Email/report delivery
+The MCP server does not send email. Weekly report delivery needs a verified sending provider or an approved Power Automate/Logic Apps webhook, sender-domain verification, and test delivery to the two configured recipients. Do not store provider secrets in the browser or Git repository.
