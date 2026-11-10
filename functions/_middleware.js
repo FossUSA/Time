@@ -83,7 +83,7 @@ async function loadAccount(env, email) {
     updatedAt: row.updated_at || null,
   };
 }
-function buildMcpServer() {
+function buildMcpServer(env) {
   const auth = getMcpAuthContext();
   const email = String(auth?.props?.email || "").trim().toLowerCase();
   if (!/^[^@\s]+@fossna\.com$/.test(email)) {
@@ -95,7 +95,7 @@ function buildMcpServer() {
     "mytime_status",
     { description: "Show the signed-in FOSS account, myTIME cloud-save status, goals and app URL. Read-only.", inputSchema: z.object({}) },
     async (_args, extra) => {
-      const account = await loadAccount(extra.env, email);
+      const account = await loadAccount(env, email);
       return jsonText({
         account: email, app: APP_URL, cloudRecordFound: !!account.updatedAt,
         lastCloudUpdate: account.updatedAt, timezone: account.settings.timezone || "local",
@@ -116,7 +116,7 @@ function buildMcpServer() {
       }),
     },
     async ({ startDate, endDate }, extra) => {
-      const account = await loadAccount(extra.env, email);
+      const account = await loadAccount(env, email);
       const zone = account.settings.timezone && account.settings.timezone !== "local"
         ? account.settings.timezone : "America/Chicago";
       const today = todayInZone(zone);
@@ -157,7 +157,7 @@ function buildMcpServer() {
     { description: "List the signed-in user's clock, lunch and break punches for one date. Read-only.", inputSchema: z.object({ date: z.string().describe("Date YYYY-MM-DD") }) },
     async ({ date }, extra) => {
       const day = normalizeDate(date, "");
-      const account = await loadAccount(extra.env, email);
+      const account = await loadAccount(env, email);
       const record = account.records[day] || {};
       const punches = Array.isArray(record.punches) ? record.punches : [];
       return jsonText({
@@ -177,7 +177,7 @@ function buildMcpServer() {
     "mytime_schedule",
     { description: "Read the signed-in user's myTIME work schedule, lunch and break settings, and hour goals.", inputSchema: z.object({}) },
     async (_args, extra) => {
-      const account = await loadAccount(extra.env, email);
+      const account = await loadAccount(env, email);
       const s = account.settings;
       return jsonText({
         account: email, timezone: s.timezone || "local",
@@ -195,7 +195,7 @@ function buildMcpServer() {
     "mytime_time_bank",
     { description: "Read the signed-in user's time-bank entries. Read-only.", inputSchema: z.object({}) },
     async (_args, extra) => {
-      const account = await loadAccount(extra.env, email);
+      const account = await loadAccount(env, email);
       return jsonText({
         account: email,
         entries: account.bankEntries.map((entry) => ({
@@ -215,7 +215,7 @@ function buildMcpServer() {
       }),
     },
     async ({ weekEnding }, extra) => {
-      const account = await loadAccount(extra.env, email);
+      const account = await loadAccount(env, email);
       const zone = account.settings.timezone && account.settings.timezone !== "local"
         ? account.settings.timezone : "America/Chicago";
       const today = todayInZone(zone);
@@ -259,7 +259,7 @@ function buildMcpServer() {
   return server;
 }
 
-const mcpHandler = createMcpHandler(buildMcpServer);
+
 
 const defaultHandler = {
   async fetch(request, env) {
@@ -334,7 +334,11 @@ const provider = new OAuthProvider({
       if (!ctx.auth.scope.includes("mytime:read")) {
         return new Response("The myTIME read permission is required.", { status: 403 });
       }
-      return mcpHandler(request, env, ctx);
+      const handler = createMcpHandler(() => buildMcpServer(env), {
+        route: "/api/mcp",
+        allowedHostnames: ["mcp.fossna.cloud"],
+      });
+      return handler(request, env, ctx);
     },
   },
   defaultHandler,
@@ -352,5 +356,13 @@ const provider = new OAuthProvider({
 });
 
 export async function onRequest(context) {
+  const url = new URL(context.request.url);
+  if (url.hostname !== "mcp.fossna.cloud") return context.next();
+  const isMcpRoute = url.pathname === "/api/mcp"
+    || url.pathname === "/authorize"
+    || url.pathname === "/oauth/token"
+    || url.pathname === "/oauth/register"
+    || url.pathname.startsWith("/.well-known/");
+  if (!isMcpRoute) return context.next();
   return provider.fetch(context.request, context.env, context);
 }
