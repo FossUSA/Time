@@ -74,7 +74,7 @@ assert(read("assets/js/10-app-core.js").includes("calendarBreakSummary(r,true)")
 assert(read("index.html").includes("Documented lunch &amp; breaks"), "Monthly and Records views must label documentary break records separately from punches.");
 assert(calendarUi.includes("hasDocumentedBreakRecord(rec)"), "Calendar must include days with documented breaks even when they have no punches.");
 assert(calendarUi.includes("saveCalendarBreakRecords"), "Calendar break editor must have an explicit save action.");
-assert(calendarUi.includes("const draft={breakStatus:{},breakTimes:{}}"), "Calendar edits must be staged in a draft before changing records.");
+assert(calendarUi.includes("draft={breakStatus:{},breakTimes:{}}"), "Calendar edits must be staged in a draft before changing records.");
 assert(!calendarUi.includes("sel.onchange=()=>{const rec=ensureBreakFields"), "Changing a break status must not auto-save before the user presses Save.");
 assert(!calendarUi.includes("setTimeout(()=>commitBreakTime(false),1400)"), "Typing in a break time must not trigger an implicit save.");
 assert(calendarUi.includes("async function verifyDateRecordSaved"), "Manage records must verify the exact edited date against D1.");
