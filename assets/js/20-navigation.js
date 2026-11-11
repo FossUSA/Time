@@ -384,7 +384,7 @@ function renderRecordManager(){
 function openRecordEditor(k){
  const input=document.getElementById('recordDate');input.value=k;const exists=!!data[k];const p=managerRecordTimes(k);
  document.getElementById('editClockIn').value=recordHH(p.cin);document.getElementById('editLunchOut').value=recordHH(p.lo);document.getElementById('editLunchIn').value=recordHH(p.li);document.getElementById('editClockOut').value=recordHH(p.cout);
- document.getElementById('editReason').value='';document.getElementById('recordEditorTitle').textContent=(exists?'Edit punches for ':'Add punches for ')+k;document.getElementById('deleteRecordDay').hidden=!exists;document.getElementById('recordEditor').hidden=false;
+ document.getElementById('editReason').value='';const br=data[k]||{},bs=br.breakStatus||{},bt=br.breakTimes||{};['lunch','morning','afternoon'].forEach(name=>{const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)status.value=['taken','skipped','not-recorded'].includes(bs[name])?bs[name]:'not-recorded';if(start)start.value=bt[name]?.start||'';if(end)end.value=bt[name]?.end||''});document.getElementById('recordEditorTitle').textContent=(exists?'Edit punches for ':'Add punches for ')+k;document.getElementById('deleteRecordDay').hidden=!exists;document.getElementById('recordEditor').hidden=false;
 }
 function deleteRecordDate(k){
  if(!data[k])return;if(!confirm('Permanently delete all punch records for '+k+' from your Cloudflare timecard? This removes them from your account across devices.'))return;
@@ -395,7 +395,7 @@ document.getElementById('recordDate')?.addEventListener('change',e=>{if(e.target
 document.getElementById('newRecordBtn')?.addEventListener('click',()=>{const d=document.getElementById('recordDate');if(!d.value)d.value=todayKey();openRecordEditor(d.value)});
 document.getElementById('cancelRecordEdit')?.addEventListener('click',()=>document.getElementById('recordEditor').hidden=true);
 document.getElementById('deleteRecordDay')?.addEventListener('click',()=>deleteRecordDate(document.getElementById('recordDate').value));
-document.getElementById('saveRecordEdit')?.addEventListener('click',()=>{
+document.getElementById('saveRecordEdit')?.addEventListener('click',async()=>{
  const k=document.getElementById('recordDate').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(k)){alert('Choose a valid work date first.');return}
  const values=[['in',document.getElementById('editClockIn').value],['lunch-start',document.getElementById('editLunchOut').value],['lunch-end',document.getElementById('editLunchIn').value],['out',document.getElementById('editClockOut').value]],seq=values.filter(x=>x[1]).map(x=>x[1]);
  if(!seq.length){alert('Enter at least one punch time, or use Delete to remove the date.');return}
@@ -403,8 +403,8 @@ document.getElementById('saveRecordEdit')?.addEventListener('click',()=>{
  if(values[1][1]&&!values[0][1]||values[2][1]&&!values[1][1]||values[3][1]&&!values[0][1]){alert('Add the preceding punch first (clock in before lunch, lunch out before lunch in, and clock in before clock out).');return}
  const punches=values.filter(x=>x[1]).map(([type,t])=>({type,ts:new Date(k+'T'+t+':00').getTime()}));
  const reason=document.getElementById('editReason').value.trim()||'Manually edited in Manage records';
- const audit=[...(data[k]?.audit||[]),{at:Date.now(),reason}];data[k]={...(data[k]||{}),punches,audit};save();render();renderRecordManager();document.getElementById('recordEditor').hidden=true;
- const status=document.getElementById('importStatus');if(status)status.textContent='Saved corrections for '+k+'.';
+ const audit=[...(data[k]?.audit||[]),{at:Date.now(),reason}],record={...(data[k]||{}),punches,audit};record.breakStatus={...(record.breakStatus||{})};record.breakTimes={...(record.breakTimes||{})};for(const name of ['lunch','morning','afternoon']){const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)record.breakStatus[name]=status.value;if(start||end){const a=start?.value||'',b=end?.value||'';if((a&&!b)||(!a&&b)){alert('Enter both start and end times for '+name+' or leave both blank.');return}if(a&&b&&b<a){alert('The end time must be after the start time for '+name+'.');return}record.breakTimes[name]={start:a,end:b}}}data[k]=record;save();render();renderRecordManager();
+ const status=document.getElementById('importStatus');if(status)status.textContent='Saving corrections for '+k+' to Cloudflare…';try{if(typeof window.myTimeFlushCloudSync==='function')await window.myTimeFlushCloudSync();if(status)status.textContent='Corrections for '+k+' saved to Cloudflare. Verify the lunch punches and documented break entries below.';document.getElementById('recordEditor').hidden=true;if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar()}catch(error){if(status)status.textContent='Local changes kept, but Cloudflare save was not confirmed: '+error.message;}
 });
 document.getElementById('downloadRecordsCsv')?.addEventListener('click',()=>{
  const escapeCsv=v=>'"'+String(v??'').replace(/"/g,'""')+'"',lines=[['Date','Clock In','Lunch Out','Lunch In','Clock Out','Paid Minutes','Notes']];
