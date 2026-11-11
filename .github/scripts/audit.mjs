@@ -21,12 +21,18 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.1"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.2.2"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v5"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v6"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
+const releaseChecker = read("assets/js/30-quality-of-life.js");
+assert(releaseChecker.includes("release?.announcement===true"), "Only explicitly announced releases may show the update banner.");
+assert(releaseChecker.includes("release.version!==currentRelease"), "The banner must be for a newer release than the open page.");
+assert(!releaseChecker.includes("setInterval(checkPage,30000)"), "The old generic 30-second page hash checker must be removed.");
+assert(!releaseChecker.includes("if(reg.waiting)announce()"), "Service-worker updates alone must never show the banner.");
+assert(existsSync("release.json"), "Major release metadata is required.");
 assert(!/cache\.(?:put|add|addAll)\([^)]*api\//i.test(sw), "API responses must never be added to Cache Storage.");
 
 for (const path of [

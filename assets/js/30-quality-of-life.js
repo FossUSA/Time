@@ -33,47 +33,51 @@
  window.addEventListener('appinstalled',()=>{installPrompt=null;syncInstallButton()});
  if(installBtn)installBtn.addEventListener('click',async()=>{if(isInstalledApp()){installBtn.hidden=true;return}if(installPrompt){installPrompt.prompt();const choice=await installPrompt.userChoice;installPrompt=null;if(choice?.outcome==='accepted')installBtn.hidden=true;else syncInstallButton()}else{alert('myTIME may already be installed. Open it from your computer’s Start menu or app launcher. To install from this browser, open the browser menu and choose “Install myTIME” or “Apps → Install this site as an app.”');syncInstallButton()}});
  /* Service-worker registration is centralized in the update checker. */
-/* Update checker: detects new webpage deployments without requiring F5. */
- (function(){
-  const banner=document.getElementById('updateNotice'),button=document.getElementById('applyUpdateBtn');
-  if(!banner||!button)return;
-  let initialTag='',updateFound=false,checking=false;
-  function announce(){updateFound=true;banner.classList.add('visible')}
-  async function getTag(){
-   try{
-    const r=await fetch('/index.html?mytime-update-check='+Date.now(),{method:'GET',cache:'no-store',credentials:'same-origin'});
-    if(!r.ok)return '';
-    const html=await r.text();
-    // Hash the actual deployed page: CDN validators can remain unchanged across cached responses.
-    let hash=2166136261;for(let i=0;i<html.length;i++){hash^=html.charCodeAt(i);hash=Math.imul(hash,16777619)}
-    return 'html-'+(hash>>>0).toString(16);
-   }catch{return ''}
-  }
-  async function checkPage(){
-   if(checking||document.visibilityState==='hidden')return;checking=true;
-   try{const tag=await getTag();if(tag){if(!initialTag)initialTag=tag;else if(tag!==initialTag)announce()}}finally{checking=false}
-  }
-  button.addEventListener('click',async()=>{
-   if(!confirm('Reload myTIME to install the update? Please make sure your latest changes have been saved first.'))return;
-   button.disabled=true;button.textContent='Updating…';
-   try{
-    if('serviceWorker' in navigator){const reg=await navigator.serviceWorker.getRegistration();if(reg?.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});await new Promise(resolve=>{const timer=setTimeout(resolve,2500);navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timer);resolve()},{once:true})})}}
-    location.reload();
-   }catch{location.reload()}
+/* Major-release checker: routine deployments and service-worker refreshes stay silent. */
+(function(){
+ const banner=document.getElementById('updateNotice'),button=document.getElementById('applyUpdateBtn');
+ if(!banner||!button)return;
+ const currentRelease=(document.querySelector('meta[name="mytime-release"]')?.content||'1.2.1').trim();
+ const title=banner.querySelector('[data-update-title]'),summary=banner.querySelector('[data-update-summary]');
+ let checking=false;
+ async function checkMajorRelease(){
+  if(checking||document.visibilityState==='hidden')return;checking=true;
+  try{
+   const response=await fetch('/release.json?check='+Date.now(),{method:'GET',cache:'no-store',credentials:'same-origin'});
+   if(!response.ok)return;
+   const release=await response.json();
+   if(release?.announcement===true&&release?.version&&release.version!==currentRelease){
+    if(title)title.textContent=release.title||'Major myTIME update available';
+    if(summary)summary.textContent=release.summary||'A major update is ready. Save your changes before updating.';
+    banner.classList.add('visible');
+   }else banner.classList.remove('visible');
+  }catch{/* Optional announcement check must never interrupt timekeeping. */}
+  finally{checking=false}
+ }
+ button.addEventListener('click',async()=>{
+  if(!confirm('Reload myTIME to apply this major update? Make sure your latest changes have been saved first.'))return;
+  button.disabled=true;button.textContent='Updating…';
+  try{
+   if('serviceWorker' in navigator){
+    const registration=await navigator.serviceWorker.getRegistration();
+    if(registration?.waiting){
+     registration.waiting.postMessage({type:'SKIP_WAITING'});
+     await new Promise(resolve=>{const timer=setTimeout(resolve,2500);navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timer);resolve()},{once:true})});
+    }
+   }
+  }catch{/* Normal reload still receives the deployed release. */}
+  location.reload();
+ });
+ if('serviceWorker' in navigator&&location.protocol==='https:'){
+  window.addEventListener('load',async()=>{
+   try{const registration=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});await registration.update().catch(()=>{});setInterval(()=>registration.update().catch(()=>{}),900000)}
+   catch{/* Offline/restricted contexts continue using the current shell. */}
   });
-  if('serviceWorker' in navigator&&location.protocol==='https:'){
-   window.addEventListener('load',async()=>{
-    try{const reg=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});if(reg.waiting)announce();
-     reg.addEventListener('updatefound',()=>{const worker=reg.installing;if(!worker)return;worker.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)announce()})});
-     setInterval(()=>reg.update().catch(()=>{}),30000);
-    }catch{}
-   });
-  }
-  window.addEventListener('load',()=>{checkPage();setInterval(checkPage,30000)});
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkPage()});
- })();
- 
- function allDates(){return Object.keys(data||{}).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort()}
+ }
+ window.addEventListener('load',()=>{checkMajorRelease();setInterval(checkMajorRelease,300000)});
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkMajorRelease()});
+})();
+function allDates(){return Object.keys(data||{}).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort()}
  function paidMinutesFor(k){const rec=data[k];if(!rec||!Array.isArray(rec.punches)||!rec.punches.length)return 0;const out=[...rec.punches].reverse().find(p=>p.type==='out');return Math.round(paidMs(rec,out?.ts||(k===todayKey()?Date.now():rec.punches[rec.punches.length-1]?.ts||Date.now()))/60000)}
  function formatHours(min){return (min/60).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:2})+' h'}
  function validationIssues(){
