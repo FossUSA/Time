@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Keep only the newest validation for each branch. Superseded commits are
+# cancelled instead of sending stale failure notifications.
+concurrency:
+  group: mytime-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
