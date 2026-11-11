@@ -293,6 +293,7 @@ function renderMyTimeCalendar(){
   });box.appendChild(times)}
   controls.appendChild(box);
  });
+ const saveBreaks=document.createElement('button');saveBreaks.type='button';saveBreaks.className='primary';saveBreaks.id='saveCalendarBreakRecords';saveBreaks.textContent='Save lunch & break corrections';saveBreaks.style.marginTop='12px';saveBreaks.onclick=async()=>{controls.querySelectorAll('input').forEach(input=>input.dispatchEvent(new Event('change')));saveBreaks.disabled=true;saveBreaks.textContent='Saving and verifying…';const ok=await confirmCalendarBreakSave(myTimeSelectedDate);saveBreaks.disabled=false;saveBreaks.textContent=ok?'Saved to Cloudflare ✓':'Retry save';};controls.appendChild(saveBreaks);
 }
 function calendarIntervalMinutes(rec,startType,endType,fallback){
  const p=rec?.punches||[],start=[...p].reverse().find(x=>x.type===startType),end=[...p].reverse().find(x=>x.type===endType);
