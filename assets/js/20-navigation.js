@@ -377,6 +377,16 @@ function exportCalendarCsv(keys){
 /* Direct editing and deletion for any saved date */
 function recordHH(ts){if(!ts)return '';const d=new Date(ts);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
 function managerRecordTimes(k){const p=data[k]?.punches||[],first=t=>p.find(x=>x.type===t);return {cin:first('in')?.ts,lo:first('lunch-start')?.ts,li:first('lunch-end')?.ts,cout:[...p].reverse().find(x=>x.type==='out')?.ts}}
+function stableRecordJson(value){if(Array.isArray(value))return value.map(stableRecordJson);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,stableRecordJson(value[key])]));return value}
+async function verifyDateRecordSaved(dateKey){
+ if(typeof window.myTimeFlushCloudSync!=='function')throw new Error('Cloud save confirmation is unavailable.');
+ await window.myTimeFlushCloudSync();
+ const response=await fetch('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
+ const payload=await response.json().catch(()=>null);
+ if(!response.ok||!payload?.ok||!payload.payload)throw new Error(payload?.error||('Cloudflare read-back failed (HTTP '+response.status+').'));
+ if(JSON.stringify(stableRecordJson(payload.payload.records?.[dateKey]||null))!==JSON.stringify(stableRecordJson(data[dateKey]||null)))throw new Error('Cloudflare did not return the exact corrected record for '+dateKey+'. Your edit is retained but not marked saved.');
+ return Number(payload.revision||0);
+}
 function renderRecordManager(){
  const body=document.getElementById('recordManagerRows');if(!body)return;
  const filter=(document.getElementById('recordSearch')?.value||'').trim(),keys=Object.keys(data).filter(k=>!filter||k.includes(filter)).sort().reverse();body.innerHTML='';
@@ -405,13 +415,15 @@ document.getElementById('deleteRecordDay')?.addEventListener('click',()=>deleteR
 document.getElementById('saveRecordEdit')?.addEventListener('click',async()=>{
  const k=document.getElementById('recordDate').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(k)){alert('Choose a valid work date first.');return}
  const values=[['in',document.getElementById('editClockIn').value],['lunch-start',document.getElementById('editLunchOut').value],['lunch-end',document.getElementById('editLunchIn').value],['out',document.getElementById('editClockOut').value]],seq=values.filter(x=>x[1]).map(x=>x[1]);
- if(!seq.length){alert('Enter at least one punch time, or use Delete to remove the date.');return}
+ const hasBreakEdits=['lunch','morning','afternoon'].some(name=>{const status=document.getElementById('edit'+name+'Status')?.value||'not-recorded',start=document.getElementById('edit'+name+'Start')?.value||'',end=document.getElementById('edit'+name+'End')?.value||'';return status!=='not-recorded'||!!start||!!end});
+ if(!seq.length&&!hasBreakEdits){alert('Enter at least one punch or documented break entry, or use Delete to remove the date.');return}
+ if(values[1][1]&&!values[2][1]||!values[1][1]&&values[2][1]){alert('Lunch out and lunch in must both be entered, or both left blank.');return}
  for(let i=1;i<seq.length;i++)if(seq[i]<seq[i-1]){alert('Punch times must be chronological: clock in, lunch out, lunch in, clock out.');return}
  if(values[1][1]&&!values[0][1]||values[2][1]&&!values[1][1]||values[3][1]&&!values[0][1]){alert('Add the preceding punch first (clock in before lunch, lunch out before lunch in, and clock in before clock out).');return}
  const punches=values.filter(x=>x[1]).map(([type,t])=>({type,ts:new Date(k+'T'+t+':00').getTime()}));
  const reason=document.getElementById('editReason').value.trim()||'Manually edited in Manage records';
  const audit=[...(data[k]?.audit||[]),{at:Date.now(),reason}],record={...(data[k]||{}),punches,audit};record.breakStatus={...(record.breakStatus||{})};record.breakTimes={...(record.breakTimes||{})};for(const name of ['lunch','morning','afternoon']){const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)record.breakStatus[name]=status.value;if(start||end){const a=start?.value||'',b=end?.value||'';if((a&&!b)||(!a&&b)){alert('Enter both start and end times for '+name+' or leave both blank.');return}if(a&&b&&b<a){alert('The end time must be after the start time for '+name+'.');return}record.breakTimes[name]={start:a,end:b}}}data[k]=record;save();render();renderRecordManager();
- const status=document.getElementById('importStatus');if(status)status.textContent='Saving corrections for '+k+' to Cloudflare…';try{if(typeof window.myTimeFlushCloudSync==='function')await window.myTimeFlushCloudSync();if(status)status.textContent='Corrections for '+k+' saved to Cloudflare. Verify the lunch punches and documented break entries below.';document.getElementById('recordEditor').hidden=true;if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar()}catch(error){if(status)status.textContent='Local changes kept, but Cloudflare save was not confirmed: '+error.message;}
+ const saveButton=document.getElementById('saveRecordEdit');if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving and verifying…'}const status=document.getElementById('importStatus');if(status)status.textContent='Saving corrections for '+k+' to Cloudflare…';try{const revision=await verifyDateRecordSaved(k);if(status)status.textContent='Cloudflare verified · '+k+' · revision '+revision;document.getElementById('recordEditor').hidden=true;if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar()}catch(error){if(status)status.textContent='Save not verified for '+k+' · your edit is retained: '+error.message;setSaveStatus(false,'Record correction not verified · pending data kept')}finally{if(saveButton){saveButton.disabled=false;saveButton.textContent='Save changes'}}
 });
 document.getElementById('downloadRecordsCsv')?.addEventListener('click',()=>{
  const escapeCsv=v=>'"'+String(v??'').replace(/"/g,'""')+'"',lines=[['Date','Clock In','Lunch Out','Lunch In','Clock Out','Paid Minutes','Notes']];
