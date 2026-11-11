@@ -251,7 +251,7 @@ function renderMyTimeCalendar(){
  document.getElementById('calendarScheduledTotal').textContent=fmtMin(scheduledMinutesTotal);
  document.getElementById('calendarHoursBalance').textContent=(totalMs/60000-scheduledMinutesTotal>=0?'+':'')+fmtMin(totalMs/60000-scheduledMinutesTotal);
  document.getElementById('calendarPunchTotal').textContent=String(punchTotal);
- const selected=calendarRecord(myTimeSelectedDate),p=selected.punches||[],has=!!(data[myTimeSelectedDate]&&(p.length||(data[myTimeSelectedDate].breakStatus)||(data[myTimeSelectedDate].breakTimes)));
+ const selected=calendarRecord(myTimeSelectedDate),p=selected.punches||[],has=!!(p.length||hasDocumentedBreakRecord(data[myTimeSelectedDate]));
  document.getElementById('calendarSelectedTitle').textContent=new Date(myTimeSelectedDate+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
  document.getElementById('calendarSavedBadge').textContent=has?(window.myTimeAutoCloudConnected?'Cloud record loaded · edits verify on save':'Awaiting Cloudflare confirmation'):'No saved record';
  const details=document.getElementById('calendarPunchDetails');details.innerHTML='';
@@ -260,40 +260,46 @@ function renderMyTimeCalendar(){
  document.getElementById('calendarDaySummary').textContent=[p.length?p.length+' clock punch event(s) · paid time '+calendarPaid(myTimeSelectedDate):'No clock punches saved',breakSummary!=='No documented lunch or break entries'?'Documented: '+breakSummary:''].filter(Boolean).join(' · ');
  renderCalendarIntervalAnalysis(myTimeSelectedDate,selected);
  const selectedSchedule=scheduleForDate(myTimeSelectedDate),selectedLate=lateStartMinutes(myTimeSelectedDate),recoverySummary=document.getElementById('calendarRecoverySummary');if(recoverySummary)recoverySummary.textContent=selectedLate>0?'Late start: '+fmtMin(selectedLate)+' (planned '+selectedSchedule.startTime+', actual '+calendarPunchTime(selected,'in')+'). Record the actual approved make-up action below.':(calendarPunchTime(selected,'in')!=='—'?'No late start detected against the planned '+selectedSchedule.startTime+'.':'No clock-in recorded; late start will be calculated once you clock in.');const noteInput=document.getElementById('calendarMakeUpNote');if(noteInput)noteInput.value=recoveryNote(myTimeSelectedDate);
- const breakRoot=has?ensureBreakFields(myTimeSelectedDate):{breakStatus:{lunch:'not-recorded',morning:'not-recorded',afternoon:'not-recorded'},breakTimes:{morning:{start:'',end:''},afternoon:{start:'',end:''}}};
+ const breakRoot=data[myTimeSelectedDate]||{breakStatus:{lunch:'not-recorded',morning:'not-recorded',afternoon:'not-recorded'},breakTimes:{}};
  const controls=document.getElementById('calendarBreakControls');controls.innerHTML='';
  [['lunch','Lunch status'],['morning','Morning 15-minute break'],['afternoon','Afternoon 15-minute break']].forEach(([name,label])=>{
   const box=document.createElement('div');box.className='mytime-break-item';const h=document.createElement('strong');h.textContent=label;box.appendChild(h);
   const sel=document.createElement('select');sel.setAttribute('aria-label',label+' status');
   [['not-recorded','Not recorded'],['taken','Taken'],['skipped','Skipped']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;sel.appendChild(o)});
-  const selectedKey=myTimeSelectedDate;
-  sel.value=breakRoot.breakStatus[name];
-  sel.onchange=()=>{const rec=ensureBreakFields(selectedKey);rec.breakStatus[name]=sel.value;save();renderMyTimeCalendar();confirmCalendarBreakSave(selectedKey)};
+  sel.value=['taken','skipped','not-recorded'].includes(breakRoot.breakStatus?.[name])?breakRoot.breakStatus[name]:'not-recorded';
   box.appendChild(sel);
-  {const times=document.createElement('div');times.className='mytime-break-times';['start','end'].forEach(part=>{
+  const times=document.createElement('div');times.className='mytime-break-times';
+  ['start','end'].forEach(part=>{
    const lab=document.createElement('label');lab.textContent=part==='start'?'Start time':'End time';
    const inp=document.createElement('input');inp.type='text';inp.inputMode='text';inp.autocomplete='off';inp.spellcheck=false;inp.maxLength=8;
-   inp.placeholder='9:45 AM';const stored=breakRoot.breakTimes[name]?.[part]||'';inp.value=displayCalendarBreakTime(stored);
+   inp.placeholder='9:45 AM';inp.value=displayCalendarBreakTime(breakRoot.breakTimes?.[name]?.[part]||'');
    inp.setAttribute('aria-label',label+' '+(part==='start'?'start time':'end time'));
    inp.title='Enter a time such as 9:45 AM or 14:30';
-   let lastSavedValue=stored,commitTimer=null;
-   const commitBreakTime=(formatValue=false)=>{
-    const value=normalizeCalendarBreakTime(inp.value);
-    if(value===null){if(formatValue)inp.setAttribute('aria-invalid','true');return false}
-    inp.removeAttribute('aria-invalid');inp.title='Enter a time such as 9:45 AM or 14:30';
-    if(value===lastSavedValue){if(formatValue)inp.value=displayCalendarBreakTime(value);return true}
-    const rec=ensureBreakFields(selectedKey);rec.breakTimes[name][part]=value;lastSavedValue=value;
-    if(formatValue)inp.value=displayCalendarBreakTime(value);
-    save();renderCalendarIntervalAnalysis(selectedKey,rec);confirmCalendarBreakSave(selectedKey);return true;
-   };
-   inp.addEventListener('input',()=>{inp.removeAttribute('aria-invalid');clearTimeout(commitTimer);commitTimer=setTimeout(()=>commitBreakTime(false),1400)});
-   inp.addEventListener('change',()=>commitBreakTime(true));inp.addEventListener('blur',()=>commitBreakTime(true));
-   inp.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(commitTimer);inp.blur()}});
-   lab.appendChild(inp);times.appendChild(lab)
-  });box.appendChild(times)}
-  controls.appendChild(box);
+   lab.appendChild(inp);times.appendChild(lab);
+  });
+  box.appendChild(times);controls.appendChild(box);
  });
- const saveBreaks=document.createElement('button');saveBreaks.type='button';saveBreaks.className='primary';saveBreaks.id='saveCalendarBreakRecords';saveBreaks.textContent='Save lunch & break corrections';saveBreaks.style.marginTop='12px';saveBreaks.onclick=async()=>{controls.querySelectorAll('input').forEach(input=>input.dispatchEvent(new Event('change')));saveBreaks.disabled=true;saveBreaks.textContent='Saving and verifying…';const ok=await confirmCalendarBreakSave(myTimeSelectedDate);saveBreaks.disabled=false;saveBreaks.textContent=ok?'Saved to Cloudflare ✓':'Retry save';};controls.appendChild(saveBreaks);
+ const saveBreaks=document.createElement('button');saveBreaks.type='button';saveBreaks.className='primary';saveBreaks.id='saveCalendarBreakRecords';saveBreaks.textContent='Save lunch & break corrections';saveBreaks.style.marginTop='12px';
+ saveBreaks.onclick=async()=>{
+  const cards=[...controls.querySelectorAll('.mytime-break-item')],draft={breakStatus:{},breakTimes:{}};
+  for(let i=0;i<cards.length;i++){
+   const [name]=[['lunch'],['morning'],['afternoon']][i],sel=cards[i].querySelector('select'),inputs=[...cards[i].querySelectorAll('input')];
+   const a=normalizeCalendarBreakTime(inputs[0]?.value),b=normalizeCalendarBreakTime(inputs[1]?.value);
+   if(a===null||b===null){alert('Enter a valid time such as 11:30 AM or 14:30.');inputs[a===null?0:1]?.focus();return}
+   if((a&&!b)||(!a&&b)){alert('Enter both start and end times for '+name+' or leave both blank.');return}
+   if(a&&b&&b<a){alert('The end time must be after the start time for '+name+'.');return}
+   draft.breakStatus[name]=sel.value;draft.breakTimes[name]={start:a,end:b};
+  }
+  const dateKey=myTimeSelectedDate,previous=data[dateKey]||{punches:[],audit:[]},updated={...previous,breakStatus:draft.breakStatus,breakTimes:{...(previous.breakTimes||{}),...draft.breakTimes}};
+  const changed=JSON.stringify(calendarBreakSnapshot(previous))!==JSON.stringify(calendarBreakSnapshot(updated));
+  if(!changed){saveBreaks.textContent='No changes to save';return}
+  data[dateKey]=updated;save();render();renderRecordManager();
+  saveBreaks.disabled=true;saveBreaks.textContent='Saving and verifying…';
+  const ok=await confirmCalendarBreakSave(dateKey);
+  saveBreaks.disabled=false;saveBreaks.textContent=ok?'Saved to Cloudflare ✓':'Save not verified · retry';
+  if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar();
+ };
+ controls.appendChild(saveBreaks);
 }
 function calendarIntervalMinutes(rec,startType,endType,fallback){
  const p=rec?.punches||[],start=[...p].reverse().find(x=>x.type===startType),end=[...p].reverse().find(x=>x.type===endType);
