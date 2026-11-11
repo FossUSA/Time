@@ -21,10 +21,10 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.2"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.2.3"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v6"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v7"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
 const releaseChecker = read("assets/js/30-quality-of-life.js");
@@ -73,6 +73,15 @@ assert(calendarUi.includes("calendar-print-breaks"), "Printed calendars must dis
 assert(read("assets/js/10-app-core.js").includes("calendarBreakSummary(r,true)"), "Dashboard monthly records must display the saved lunch and break documentation.");
 assert(read("index.html").includes("Documented lunch &amp; breaks"), "Monthly and Records views must label documentary break records separately from punches.");
 assert(calendarUi.includes("hasDocumentedBreakRecord(rec)"), "Calendar must include days with documented breaks even when they have no punches.");
+assert(calendarUi.includes("saveCalendarBreakRecords"), "Calendar break editor must have an explicit save action.");
+assert(calendarUi.includes("const draft={breakStatus:{},breakTimes:{}}"), "Calendar edits must be staged in a draft before changing records.");
+assert(!calendarUi.includes("sel.onchange=()=>{const rec=ensureBreakFields"), "Changing a break status must not auto-save before the user presses Save.");
+assert(!calendarUi.includes("setTimeout(()=>commitBreakTime(false),1400)"), "Typing in a break time must not trigger an implicit save.");
+assert(calendarUi.includes("async function verifyDateRecordSaved"), "Manage records must verify the exact edited date against D1.");
+assert(calendarUi.includes("stableRecordJson(payload.payload.records?.[dateKey]||null)"), "Record save confirmation must compare the full record, not just the request response.");
+assert(calendarUi.includes("Lunch out and lunch in must both be entered"), "Record editor must reject incomplete lunch punch pairs.");
+assert(calendarUi.includes("Enter both start and end times for '+name"), "Record editor must reject incomplete documented break ranges.");
+
 assert(pkg.scripts?.test, "Repository test script is missing.");
 
 console.log("myTIME audit passed: browser assets, syntax, Access auth, D1 revision guards, webhook routing, and service-worker policy.");
