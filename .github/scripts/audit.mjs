@@ -105,9 +105,8 @@ assert(recordEditor.includes("updateRecordPaidTimePreview()"), "Paid time previe
 assert(recordEditor.includes("document.getElementById('editLunchOut').value=start"), "Copy action must map documented lunch start to paid-time lunch-out.");
 assert(recordEditor.includes("document.getElementById('editLunchIn').value=end"), "Copy action must map documented lunch end to paid-time lunch-in.");
 
-assert(calendarUi.includes('id="calendarPunchControls"'), "Calendar must expose editable paid-time punch fields.");
-assert(calendarUi.includes("Lunch deducted from paid time"), "Analysis must distinguish the lunch deduction from documented lunch duration.");
-assert(calendarUi.includes("copyCalendarDocumentedLunchToPunches"), "Calendar must allow an explicit copy of documented lunch to paid-time punches.");
-assert(calendarUi.includes("myTimeCalendarPunchBaseline"), "Calendar editing must preserve untouched punch timestamp precision.");
-assert(calendarUi.includes("calendarPunchOnlyIntervalMinutes"), "Calendar must calculate lunch deduction from punch events.");
-assert(!calendarUi.includes("saveCalendarBreakRecords"), "The documentation-only save action must be removed from the selected-day editor.");
+assert(calendarUi.includes("calendarPunchOnlyIntervalMinutes"), "Read-only Calendar analysis must distinguish paid-time lunch from documented lunch.");
+assert(calendarUi.includes("editSelectedDayInRecords"), "Calendar must open the single Manage Records correction form for a selected day.");
+assert(!calendarUi.includes("calendarPunchControls") && !calendarUi.includes("calendarBreakControls"), "Calendar must not contain duplicate editable controls.");
+assert(!calendarUi.includes("copyCalendarDocumentedLunchToPunches"), "Lunch corrections must be made only in Manage Records.");
+assert(!calendarUi.includes("saveCalendarMakeUpNote"), "Calendar must not have a separate make-up note save action.");
