@@ -399,7 +399,7 @@ function renderRecordManager(){
  });
 }
 function calculateRecordPaidMinutes(input){
- const minute=value=>{if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(value||'')))return null;const [h,m]=value.split(':').map(Number);return h*60+m};
+ const minute=value=>{if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||'')))return null;const [h,m]=value.split(':').map(Number);return h*60+m};
  const start=minute(input.clockIn),out=minute(input.clockOut),lunchOut=minute(input.lunchOut),lunchIn=minute(input.lunchIn);
  if(start===null||out===null)return {valid:false,message:'Enter both clock-in and clock-out times to preview paid hours.'};
  if((input.lunchOut&&!input.lunchIn)||(!input.lunchOut&&input.lunchIn))return {valid:false,message:'Enter both lunch punches or leave both blank.'};
