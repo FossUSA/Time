@@ -27,7 +27,7 @@ assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
 assert(sw.includes("foss-mytime-shell-v12"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
-assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.7"), "The punch conflict merger must load before app core.");
+assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.8"), "The punch conflict merger must load before app core.");
 assert(read("assets/js/05-cloud-merge.js").includes("mergePunches"), "The punch conflict helper is required.");
 assert(read("assets/js/10-app-core.js").includes("window.MyTimeCloudMerge.mergePunches(base,local,remote)"), "Punch conflicts must use identity-aware three-way merging.");
 assert(read("assets/js/10-app-core.js").includes("await window.myTimeFlushCloudSync()"), "Workday settings must await Cloudflare confirmation.");
