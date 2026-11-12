@@ -12,7 +12,7 @@ function extract(name,nextName){
 }
 const sandbox={};
 vm.runInNewContext(
- extract("calendarPunchOnlyIntervalMinutes","syncCalendarDraftFromControls")+"\n"+
+ extract("calendarPunchOnlyIntervalMinutes","calendarKeyDate")+"\n"+
  extract("calculateRecordPaidMinutes","updateRecordPaidTimePreview"),
  sandbox
 );
