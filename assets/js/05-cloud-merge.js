@@ -27,6 +27,7 @@
   }
   merged.sort((a,b)=>Number(a?.ts||0)-Number(b?.ts||0));
   mergePunches.lastConflicts=conflicts;
+  if(root.MyTimeCloudMerge)root.MyTimeCloudMerge.lastConflicts=(root.MyTimeCloudMerge.lastConflicts||0)+conflicts;
   return merged;
  }
  root.MyTimeCloudMerge={mergePunches,lastConflicts:0};

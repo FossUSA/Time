@@ -1,7 +1,7 @@
 {
   "name": "foss-mytime",
   "private": true,
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "FOSS myTIME Cloudflare Pages app, D1 records API, and OAuth-protected MCP service",
   "dependencies": {
     "agents": "0.31.0",
