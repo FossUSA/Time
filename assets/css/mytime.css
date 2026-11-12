@@ -695,3 +695,10 @@ html.mytime-cloud-pending main.shell{visibility:hidden!important;pointer-events:
 .mytime-calendar-day>strong{align-self:flex-start;justify-content:center;margin:0;width:28px;height:28px;line-height:28px}
 .mytime-calendar-empty{min-height:140px}
 @media(max-width:800px){.mytime-calendar-weekday{min-height:34px;padding:6px 3px}.mytime-calendar-day{gap:4px;padding:7px 6px}.mytime-calendar-day>strong{width:26px;height:26px;line-height:26px}}
+
+/* Paid-time correction preview is deliberately separate from documented break notes. */
+.record-paid-time-preview{grid-column:1/-1;margin:2px 0 12px;padding:12px 14px;font-weight:650;line-height:1.45}
+.record-paid-time-preview[data-kind="warning"]{border-left:4px solid #c58b20}
+.record-paid-time-preview[data-kind="info"]{border-left:4px solid var(--primary,#09266f)}
+#copyDocumentedLunchToPunches{margin-top:12px}
+#recordLunchCopyNotice{margin:8px 0 0}

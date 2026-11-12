@@ -398,15 +398,50 @@ function renderRecordManager(){
   const td=document.createElement('td'),actions=document.createElement('div');actions.className='record-row-actions';const edit=document.createElement('button');edit.type='button';edit.className='quiet';edit.textContent='Edit';edit.onclick=()=>openRecordEditor(k);const del=document.createElement('button');del.type='button';del.className='danger';del.textContent='Delete';del.onclick=()=>deleteRecordDate(k);actions.append(edit,del);td.appendChild(actions);tr.appendChild(td);body.appendChild(tr);
  });
 }
+function calculateRecordPaidMinutes(input){
+ const minute=value=>{if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(value||'')))return null;const [h,m]=value.split(':').map(Number);return h*60+m};
+ const start=minute(input.clockIn),out=minute(input.clockOut),lunchOut=minute(input.lunchOut),lunchIn=minute(input.lunchIn);
+ if(start===null||out===null)return {valid:false,message:'Enter both clock-in and clock-out times to preview paid hours.'};
+ if((input.lunchOut&&!input.lunchIn)||(!input.lunchOut&&input.lunchIn))return {valid:false,message:'Enter both lunch punches or leave both blank.'};
+ if(out<start)return {valid:false,message:'Clock-out must be later than clock-in for this work date.'};
+ if(lunchOut!==null&&lunchIn!==null&&(lunchOut<start||lunchIn<lunchOut||lunchIn>out))return {valid:false,message:'Lunch punches must fall between clock-in and clock-out in chronological order.'};
+ const elapsed=out-start,lunch=lunchOut===null?0:lunchIn-lunchOut,paid=elapsed-lunch;
+ if(paid<0)return {valid:false,message:'Lunch duration cannot exceed the total shift.'};
+ return {valid:true,totalMinutes:paid,elapsedMinutes:elapsed,lunchMinutes:lunch};
+}
+function updateRecordPaidTimePreview(){
+ const preview=document.getElementById('recordPaidTimePreview');if(!preview)return;
+ const key=document.getElementById('recordDate')?.value||'';
+ const input={clockIn:document.getElementById('editClockIn')?.value||'',lunchOut:document.getElementById('editLunchOut')?.value||'',lunchIn:document.getElementById('editLunchIn')?.value||'',clockOut:document.getElementById('editClockOut')?.value||''};
+ const result=calculateRecordPaidMinutes(input);
+ if(!result.valid){preview.textContent=result.message;preview.dataset.kind='warning';return}
+ const existing=data[key],out=[...(existing?.punches||[])].reverse().find(x=>x.type==='out');
+ const current=existing?Math.round(paidMs(existing,out?.ts||Date.now())/60000):null;
+ const fmt=n=>Math.floor(n/60)+'h '+String(n%60).padStart(2,'0')+'m';
+ preview.textContent=current===null?'Paid time after saving: '+fmt(result.totalMinutes)+'. Preview only — no changes have been saved.':'Current saved paid time: '+fmt(current)+' → With punch values above: '+fmt(result.totalMinutes)+'. Preview only — no changes have been saved.';
+ preview.dataset.kind='info';
+}
+function copyDocumentedLunchToPunches(){
+ const start=document.getElementById('editlunchStart')?.value||'',end=document.getElementById('editlunchEnd')?.value||'';
+ if(!start||!end){alert('Enter both documented lunch start and end times before copying them to the paid-time lunch punches.');return}
+ document.getElementById('editLunchOut').value=start;
+ document.getElementById('editLunchIn').value=end;
+ updateRecordPaidTimePreview();
+ const note=document.getElementById('recordLunchCopyNotice');
+ if(note)note.textContent='Copied to the paid-time Lunch out and Lunch in fields above. This is not saved yet — review the preview and press Save changes.';
+}
 function openRecordEditor(k){
  const input=document.getElementById('recordDate');input.value=k;const exists=!!data[k];const p=managerRecordTimes(k);
  document.getElementById('editClockIn').value=recordHH(p.cin);document.getElementById('editLunchOut').value=recordHH(p.lo);document.getElementById('editLunchIn').value=recordHH(p.li);document.getElementById('editClockOut').value=recordHH(p.cout);
- document.getElementById('editReason').value='';const br=data[k]||{},bs=br.breakStatus||{},bt=br.breakTimes||{};['lunch','morning','afternoon'].forEach(name=>{const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)status.value=['taken','skipped','not-recorded'].includes(bs[name])?bs[name]:'not-recorded';if(start)start.value=bt[name]?.start||'';if(end)end.value=bt[name]?.end||''});document.getElementById('recordEditorTitle').textContent=(exists?'Edit punches for ':'Add punches for ')+k;document.getElementById('deleteRecordDay').hidden=!exists;document.getElementById('recordEditor').hidden=false;
+ document.getElementById('editReason').value='';const br=data[k]||{},bs=br.breakStatus||{},bt=br.breakTimes||{};['lunch','morning','afternoon'].forEach(name=>{const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)status.value=['taken','skipped','not-recorded'].includes(bs[name])?bs[name]:'not-recorded';if(start)start.value=bt[name]?.start||'';if(end)end.value=bt[name]?.end||''});document.getElementById('recordEditorTitle').textContent=(exists?'Edit punches for ':'Add punches for ')+k;document.getElementById('deleteRecordDay').hidden=!exists;document.getElementById('recordEditor').hidden=false;updateRecordPaidTimePreview();
 }
 function deleteRecordDate(k){
  if(!data[k])return;if(!confirm('Permanently delete all punch records for '+k+' from your Cloudflare timecard? This removes them from your account across devices.'))return;
  delete data[k];save();render();renderRecordManager();document.getElementById('recordEditor').hidden=true;
 }
+['editClockIn','editLunchOut','editLunchIn','editClockOut'].forEach(id=>{const el=document.getElementById(id);el?.addEventListener('input',updateRecordPaidTimePreview);el?.addEventListener('change',updateRecordPaidTimePreview)});
+['editlunchStart','editlunchEnd'].forEach(id=>{const el=document.getElementById(id);el?.addEventListener('input',updateRecordPaidTimePreview);el?.addEventListener('change',updateRecordPaidTimePreview)});
+document.getElementById('copyDocumentedLunchToPunches')?.addEventListener('click',copyDocumentedLunchToPunches);
 document.getElementById('recordSearch')?.addEventListener('input',renderRecordManager);
 document.getElementById('recordDate')?.addEventListener('change',e=>{if(e.target.value)openRecordEditor(e.target.value)});
 document.getElementById('newRecordBtn')?.addEventListener('click',()=>{const d=document.getElementById('recordDate');if(!d.value)d.value=todayKey();openRecordEditor(d.value)});

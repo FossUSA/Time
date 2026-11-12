@@ -21,10 +21,10 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.4"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.2.5"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v8"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v9"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
 assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.4"), "The punch conflict merger must load before app core.");
@@ -93,3 +93,11 @@ assert(calendarUi.includes("Enter both start and end times for '+name"), "Record
 assert(pkg.scripts?.test, "Repository test script is missing.");
 
 console.log("myTIME audit passed: browser assets, syntax, Access auth, D1 revision guards, webhook routing, and service-worker policy.");
+
+const recordEditor = read("assets/js/20-navigation.js");
+assert(html.includes('id="recordPaidTimePreview"'), "Record editor must show a paid-time preview.");
+assert(html.includes('id="copyDocumentedLunchToPunches"'), "Record editor must offer an explicit documented-lunch to punch copy action.");
+assert(recordEditor.includes("function calculateRecordPaidMinutes(input)"), "Paid time preview calculation is required.");
+assert(recordEditor.includes("updateRecordPaidTimePreview()"), "Paid time preview must update when punch inputs change.");
+assert(recordEditor.includes("document.getElementById('editLunchOut').value=start"), "Copy action must map documented lunch start to paid-time lunch-out.");
+assert(recordEditor.includes("document.getElementById('editLunchIn').value=end"), "Copy action must map documented lunch end to paid-time lunch-in.");
