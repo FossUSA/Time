@@ -21,12 +21,20 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.3"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.2.4"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v7"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v8"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
+assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.4"), "The punch conflict merger must load before app core.");
+assert(read("assets/js/05-cloud-merge.js").includes("mergePunches"), "The punch conflict helper is required.");
+assert(read("assets/js/10-app-core.js").includes("window.MyTimeCloudMerge.mergePunches(base,local,remote)"), "Punch conflicts must use identity-aware three-way merging.");
+assert(read("assets/js/10-app-core.js").includes("await window.myTimeFlushCloudSync()"), "Workday settings must await Cloudflare confirmation.");
+assert(read("assets/js/10-app-core.js").includes("latest.payload.settings,settings"), "Settings must be read back from D1 before confirming.");
+assert(read("assets/js/20-navigation.js").includes("originalPunches.filter(item=>!selectedOriginal.has(item))"), "Editing core punches must preserve separate break events.");
+assert(read("assets/js/20-navigation.js").includes("before,after"), "Manual corrections must retain before/after audit values.");
+
 const releaseChecker = read("assets/js/30-quality-of-life.js");
 assert(releaseChecker.includes("release?.announcement===true"), "Only explicitly announced releases may show the update banner.");
 assert(releaseChecker.includes("release.version!==currentRelease"), "The banner must be for a newer release than the open page.");

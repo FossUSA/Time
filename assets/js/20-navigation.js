@@ -420,10 +420,38 @@ document.getElementById('saveRecordEdit')?.addEventListener('click',async()=>{
  if(values[1][1]&&!values[2][1]||!values[1][1]&&values[2][1]){alert('Lunch out and lunch in must both be entered, or both left blank.');return}
  for(let i=1;i<seq.length;i++)if(seq[i]<seq[i-1]){alert('Punch times must be chronological: clock in, lunch out, lunch in, clock out.');return}
  if(values[1][1]&&!values[0][1]||values[2][1]&&!values[1][1]||values[3][1]&&!values[0][1]){alert('Add the preceding punch first (clock in before lunch, lunch out before lunch in, and clock in before clock out).');return}
- const punches=values.filter(x=>x[1]).map(([type,t])=>({type,ts:new Date(k+'T'+t+':00').getTime()}));
+ const original=data[k]||{punches:[],audit:[]},originalPunches=Array.isArray(original.punches)?original.punches:[],selectedOriginal=new Set();
+ const replacements=values.map(([type,t])=>{
+  const prior=originalPunches.find(item=>item.type===type&&!selectedOriginal.has(item));
+  if(prior)selectedOriginal.add(prior);
+  if(!t)return null;
+  const ts=new Date(k+'T'+t+':00').getTime();
+  if(!Number.isFinite(ts))return null;
+  return {...(prior||{}),eventId:prior?.eventId||(prior?String(prior.type)+'|'+String(prior.ts):String(type)+'|'+String(ts)),type,ts};
+ }).filter(Boolean);
+ // Preserve every non-edited event, including rest-break punches and extra
+ // lunch cycles. The correction form replaces only its four displayed events.
+ const punches=[...originalPunches.filter(item=>!selectedOriginal.has(item)),...replacements].sort((a,b)=>Number(a.ts)-Number(b.ts));
  const reason=document.getElementById('editReason').value.trim()||'Manually edited in Manage records';
- const audit=[...(data[k]?.audit||[]),{at:Date.now(),reason}],record={...(data[k]||{}),punches,audit};record.breakStatus={...(record.breakStatus||{})};record.breakTimes={...(record.breakTimes||{})};for(const name of ['lunch','morning','afternoon']){const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)record.breakStatus[name]=status.value;if(start||end){const a=start?.value||'',b=end?.value||'';if((a&&!b)||(!a&&b)){alert('Enter both start and end times for '+name+' or leave both blank.');return}if(a&&b&&b<a){alert('The end time must be after the start time for '+name+'.');return}record.breakTimes[name]={start:a,end:b}}}data[k]=record;save();render();renderRecordManager();
- const saveButton=document.getElementById('saveRecordEdit');if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving and verifying…'}const status=document.getElementById('importStatus');if(status)status.textContent='Saving corrections for '+k+' to Cloudflare…';try{const revision=await verifyDateRecordSaved(k);if(status)status.textContent='Cloudflare verified · '+k+' · revision '+revision;document.getElementById('recordEditor').hidden=true;if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar()}catch(error){if(status)status.textContent='Save not verified for '+k+' · your edit is retained: '+error.message;setSaveStatus(false,'Record correction not verified · pending data kept')}finally{if(saveButton){saveButton.disabled=false;saveButton.textContent='Save changes'}}
+ const breakStatus={...(original.breakStatus||{})},breakTimes={...(original.breakTimes||{})};
+ for(const name of ['lunch','morning','afternoon']){
+  const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');
+  if(status)breakStatus[name]=status.value;
+  if(start||end){
+   const a=start?.value||'',b=end?.value||'';
+   if((a&&!b)||(!a&&b)){alert('Enter both start and end times for '+name+' or leave both blank.');return}
+   if(a&&b&&b<a){alert('The end time must be after the start time for '+name+'.');return}
+   breakTimes[name]={start:a,end:b};
+  }
+ }
+ const before={punches:originalPunches.map(item=>({...item})),breakStatus:{...(original.breakStatus||{})},breakTimes:{...(original.breakTimes||{})}};
+ const after={punches:punches.map(item=>({...item})),breakStatus:{...breakStatus},breakTimes:{...breakTimes}};
+ const audit=[...(original.audit||[]),{at:Date.now(),reason,before,after}];
+ const record={...original,punches,audit,breakStatus,breakTimes};
+ const saveButton=document.getElementById('saveRecordEdit');if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving and verifying…'}
+ data[k]=record;render();renderRecordManager();
+ const locallySaved=save();
+ const status=document.getElementById('importStatus');if(status)status.textContent='Saving corrections for '+k+' to Cloudflare…';try{if(!locallySaved)throw new Error('The browser could not store a temporary copy of this correction.');const revision=await verifyDateRecordSaved(k);if(status)status.textContent='Cloudflare verified · '+k+' · revision '+revision;document.getElementById('recordEditor').hidden=true;if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar()}catch(error){if(status)status.textContent='Save not verified for '+k+' · your edit remains in this browser: '+error.message;setSaveStatus(false,'Record correction not verified · pending data kept')}finally{if(saveButton){saveButton.disabled=false;saveButton.textContent='Save changes'}}
 });
 document.getElementById('downloadRecordsCsv')?.addEventListener('click',()=>{
  const escapeCsv=v=>'"'+String(v??'').replace(/"/g,'""')+'"',lines=[['Date','Clock In','Lunch Out','Lunch In','Clock Out','Paid Minutes','Notes']];
