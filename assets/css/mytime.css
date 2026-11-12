@@ -688,3 +688,10 @@ html.mytime-cloud-pending main.shell{visibility:hidden!important;pointer-events:
 .record-break-summary{min-width:260px;white-space:pre-line;line-height:1.5;font-size:12px;color:var(--muted)}
 .calendar-print-breaks{font-size:6.2pt;line-height:1.25;margin-top:3pt;color:#35466a;white-space:normal;overflow-wrap:anywhere}
 .calendar-print-breaks strong{font-weight:800;color:#172b58}
+
+/* Calendar alignment: keep weekday labels close to the date row and align date numerals consistently. */
+.mytime-calendar-weekday{min-height:36px;padding:7px 4px;line-height:1.2}
+.mytime-calendar-day{gap:4px;padding:8px 8px}
+.mytime-calendar-day>strong{align-self:flex-start;justify-content:center;margin:0;width:28px;height:28px;line-height:28px}
+.mytime-calendar-empty{min-height:140px}
+@media(max-width:800px){.mytime-calendar-weekday{min-height:34px;padding:6px 3px}.mytime-calendar-day{gap:4px;padding:7px 6px}.mytime-calendar-day>strong{width:26px;height:26px;line-height:26px}}
