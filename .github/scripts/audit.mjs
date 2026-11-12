@@ -21,10 +21,10 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.7"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.2.8"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v11"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v12"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
 assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.7"), "The punch conflict merger must load before app core.");
@@ -81,8 +81,8 @@ assert(calendarUi.includes("calendar-print-breaks"), "Printed calendars must dis
 assert(read("assets/js/10-app-core.js").includes("calendarBreakSummary(r,true)"), "Dashboard monthly records must display the saved lunch and break documentation.");
 assert(read("index.html").includes("Documented lunch &amp; breaks"), "Monthly and Records views must label documentary break records separately from punches.");
 assert(calendarUi.includes("hasDocumentedBreakRecord(rec)"), "Calendar must include days with documented breaks even when they have no punches.");
-assert(calendarUi.includes("saveCalendarBreakRecords"), "Calendar break editor must have an explicit save action.");
-assert(calendarUi.includes("draft={breakStatus:{},breakTimes:{}}"), "Calendar edits must be staged in a draft before changing records.");
+assert(calendarUi.includes("Save selected-day changes"), "Selected-day punches and documented breaks must share one explicit save action.");
+assert(calendarUi.includes("function ensureCalendarDraft()"), "Selected-day changes must use one staged cloud-record draft.");
 assert(!calendarUi.includes("sel.onchange=()=>{const rec=ensureBreakFields"), "Changing a break status must not auto-save before the user presses Save.");
 assert(!calendarUi.includes("setTimeout(()=>commitBreakTime(false),1400)"), "Typing in a break time must not trigger an implicit save.");
 assert(calendarUi.includes("async function verifyDateRecordSaved"), "Manage records must verify the exact edited date against D1.");
@@ -101,3 +101,10 @@ assert(recordEditor.includes("function calculateRecordPaidMinutes(input)"), "Pai
 assert(recordEditor.includes("updateRecordPaidTimePreview()"), "Paid time preview must update when punch inputs change.");
 assert(recordEditor.includes("document.getElementById('editLunchOut').value=start"), "Copy action must map documented lunch start to paid-time lunch-out.");
 assert(recordEditor.includes("document.getElementById('editLunchIn').value=end"), "Copy action must map documented lunch end to paid-time lunch-in.");
+
+assert(calendarUi.includes('id="calendarPunchControls"'), "Calendar must expose editable paid-time punch fields.");
+assert(calendarUi.includes("Lunch deducted from paid time"), "Analysis must distinguish the lunch deduction from documented lunch duration.");
+assert(calendarUi.includes("copyCalendarDocumentedLunchToPunches"), "Calendar must allow an explicit copy of documented lunch to paid-time punches.");
+assert(calendarUi.includes("myTimeCalendarPunchBaseline"), "Calendar editing must preserve untouched punch timestamp precision.");
+assert(calendarUi.includes("calendarPunchOnlyIntervalMinutes"), "Calendar must calculate lunch deduction from punch events.");
+assert(!calendarUi.includes("saveCalendarBreakRecords"), "The documentation-only save action must be removed from the selected-day editor.");
