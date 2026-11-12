@@ -10,25 +10,35 @@ Storage.prototype.setItem=function(key,value){nativeStorageSetItem.call(this,key
 const nativeStorageRemoveItem=Storage.prototype.removeItem;
 Storage.prototype.removeItem=function(key){nativeStorageRemoveItem.call(this,key);if(this===localStorage&&shouldSyncCloudStorageKey(key)&&!cloudHydrating)queueCloudSync()};
 
-function cloudLocalState(){const state={};for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key&&shouldSyncCloudStorageKey(key))state[key]=localStorage.getItem(key)}return state}
-function cloudPayload(){return {records:data,settings,bankEntries:typeof bankEntries!=='undefined'?bankEntries:load('foss-time-bank-v1',[]),profile:load('foss-time-profile-v1',null),theme:localStorage.getItem('foss-time-theme-v1')||'light',localState:cloudLocalState()}}
+function safeCloudStorageGet(key){try{return localStorage.getItem(key)}catch(error){console.warn('myTIME browser storage read unavailable:',error);return null}}
+function cloudLocalState(){const state={};try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key&&shouldSyncCloudStorageKey(key)){const value=localStorage.getItem(key);if(value!==null)state[key]=value}}}catch(error){console.warn('myTIME browser recovery metadata unavailable; cloud record payload will still sync:',error)}return state}
+function cloudPayload(){return {records:data,settings,bankEntries:typeof bankEntries!=='undefined'?bankEntries:load('foss-time-bank-v1',[]),profile:load('foss-time-profile-v1',null),theme:safeCloudStorageGet('foss-time-theme-v1')||'light',localState:cloudLocalState()}}
 function mergeLegacyRecords(local,remote){const merged={...(remote||{})};for(const [date,lr] of Object.entries(local||{})){const rr=merged[date];if(!rr){merged[date]=lr;continue}const all=[...(rr.punches||[]),...(lr.punches||[])],seen=new Set();merged[date]={...rr,punches:all.filter(x=>{const k=String(x.type)+'|'+String(x.ts);if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>Number(a.ts)-Number(b.ts)),audit:[...(rr.audit||[]),...(lr.audit||[]).filter(x=>!(rr.audit||[]).some(y=>JSON.stringify(y)===JSON.stringify(x)))],breakStatus:{...(rr.breakStatus||{}),...(lr.breakStatus||{})},breakTimes:{...(rr.breakTimes||{}),...(lr.breakTimes||{})}}}return merged}
 function applyCloudPayload(remote){
  cloudHydrating=true;
  try{
-  /* D1 is authoritative. Replace this browser's myTIME cache with the exact
-     cloud snapshot, even for older cloud payloads without localState. */
-  const state=remote.localState&&typeof remote.localState==='object'&&!Array.isArray(remote.localState)?remote.localState:{};
-  for(let i=localStorage.length-1;i>=0;i--){const key=localStorage.key(i);if(key&&key.startsWith('foss-time-')&&!Object.prototype.hasOwnProperty.call(state,key))localStorage.removeItem(key)}
-  for(const [key,value] of Object.entries(state)){if(key.startsWith('foss-time-')&&typeof value==='string')localStorage.setItem(key,value)}
+  // D1 is authoritative. Load records/settings into memory first. Browser
+  // storage is a convenience cache and must not block the cloud application.
   data=remote.records&&typeof remote.records==='object'&&!Array.isArray(remote.records)?remote.records:{};
   settings=remote.settings&&typeof remote.settings==='object'&&!Array.isArray(remote.settings)?remote.settings:{startTime:'08:00',endTime:'17:00',lunchStart:'11:30',lunchEnd:'12:30',morningBreakTime:'10:00',afternoonBreakTime:'15:00',goalHours:8,timezone:'local'};
   bankEntries=Array.isArray(remote.bankEntries)?remote.bankEntries:[];
-  if(typeof profile!=='undefined'){const restoredProfile=remote.profile&&typeof remote.profile==='object'?remote.profile:{name:'',email:typeof authenticatedUserEmail==='string'?authenticatedUserEmail:'',photo:''};profile={name:typeof restoredProfile.name==='string'?restoredProfile.name:'',email:typeof restoredProfile.email==='string'?restoredProfile.email:'',photo:typeof restoredProfile.photo==='string'?restoredProfile.photo:''};}
-  if(remote.theme==='dark'||remote.theme==='light'){localStorage.setItem('foss-time-theme-v1',remote.theme);if(typeof window.myTimeApplyTheme==='function')window.myTimeApplyTheme(remote.theme)}
-  localStorage.setItem(KEY,JSON.stringify(data));localStorage.setItem(SETKEY,JSON.stringify(settings));
-  localStorage.setItem('foss-time-bank-v1',JSON.stringify(bankEntries));
-  if(typeof profile!=='undefined')localStorage.setItem('foss-time-profile-v1',JSON.stringify(profile));
+  if(typeof profile!=='undefined'){
+   const restoredProfile=remote.profile&&typeof remote.profile==='object'?remote.profile:{name:'',email:typeof authenticatedUserEmail==='string'?authenticatedUserEmail:'',photo:''};
+   profile={name:typeof restoredProfile.name==='string'?restoredProfile.name:'',email:typeof restoredProfile.email==='string'?restoredProfile.email:'',photo:typeof restoredProfile.photo==='string'?restoredProfile.photo:''};
+  }
+  const restoredTheme=remote.theme==='dark'||remote.theme==='light'?remote.theme:'light';
+  try{
+   const state=remote.localState&&typeof remote.localState==='object'&&!Array.isArray(remote.localState)?remote.localState:{};
+   for(let i=localStorage.length-1;i>=0;i--){const key=localStorage.key(i);if(key&&key.startsWith('foss-time-')&&!Object.prototype.hasOwnProperty.call(state,key))localStorage.removeItem(key)}
+   for(const [key,value] of Object.entries(state)){if(key.startsWith('foss-time-')&&typeof value==='string')localStorage.setItem(key,value)}
+   localStorage.setItem(KEY,JSON.stringify(data));localStorage.setItem(SETKEY,JSON.stringify(settings));
+   localStorage.setItem('foss-time-bank-v1',JSON.stringify(bankEntries));
+   if(typeof profile!=='undefined')localStorage.setItem('foss-time-profile-v1',JSON.stringify(profile));
+   if(remote.theme==='dark'||remote.theme==='light')localStorage.setItem('foss-time-theme-v1',restoredTheme);
+  }catch(storageError){
+   console.warn('myTIME loaded the authoritative Cloudflare D1 record; browser recovery cache is unavailable:',storageError);
+  }
+  if(typeof window.myTimeApplyTheme==='function')window.myTimeApplyTheme(restoredTheme);
  }finally{cloudHydrating=false}
  if(typeof applySettings==='function')applySettings();
  if(typeof renderProfile==='function')renderProfile();
@@ -283,8 +293,30 @@ async function retryCloudSync(){
  }
 }
 (function attachCloudRetry(){const root=$('saveStatus');if(root){root.addEventListener('click',retryCloudSync);root.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();retryCloudSync()}});root.title='Click to load the latest Cloudflare D1 data or retry connection'}const retry=$('cloudStartupRetry');if(retry)retry.addEventListener('click',retryCloudSync)})();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(data));setSaveStatus(false,'Waiting for Cloudflare save confirmation…');queueCloudSync();return true}catch(e){setSaveStatus(false,'Temporary recovery copy failed');return false}}
-function saveSet(){try{localStorage.setItem(SETKEY,JSON.stringify(settings));setSaveStatus(false,'Waiting for Cloudflare settings save…');queueCloudSync();return true}catch(e){setSaveStatus(false,'Settings not saved');return false}}
+function save(){
+ let recoveryError=null;
+ try{localStorage.setItem(KEY,JSON.stringify(data))}catch(error){recoveryError=error}
+ if(cloudSyncReady&&!cloudSyncBlocked){
+  setSaveStatus(false,recoveryError?'Browser recovery copy unavailable · saving directly to Cloudflare…':'Waiting for Cloudflare save confirmation…');
+  queueCloudSync();
+  if(recoveryError)console.warn('myTIME browser recovery write failed; Cloudflare save continues:',recoveryError);
+  return true;
+ }
+ setSaveStatus(false,recoveryError?'Browser recovery copy unavailable · Cloudflare is not ready; changes are not confirmed saved':'Waiting for Cloudflare save confirmation…');
+ return !recoveryError;
+}
+function saveSet(){
+ let recoveryError=null;
+ try{localStorage.setItem(SETKEY,JSON.stringify(settings))}catch(error){recoveryError=error}
+ if(cloudSyncReady&&!cloudSyncBlocked){
+  setSaveStatus(false,recoveryError?'Browser settings recovery unavailable · saving directly to Cloudflare…':'Waiting for Cloudflare settings save…');
+  queueCloudSync();
+  if(recoveryError)console.warn('myTIME browser settings recovery write failed; Cloudflare save continues:',recoveryError);
+  return true;
+ }
+ setSaveStatus(false,recoveryError?'Browser recovery unavailable · Cloudflare is not ready':'Settings waiting for Cloudflare save confirmation…');
+ return !recoveryError;
+}
 function humanTime(value){if(!value)return '—';const [h,m]=value.split(':').map(Number);return new Date(2000,0,1,h,m).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
 function renderWorkSettingsSummary(){$('summaryStart').textContent=humanTime(settings.startTime);$('summaryEnd').textContent=humanTime(settings.endTime);$('summaryLunch').textContent=humanTime(settings.lunchStart)+'–'+humanTime(settings.lunchEnd);$('summaryMorningBreak').textContent=humanTime(settings.morningBreakTime||'10:00');$('summaryAfternoonBreak').textContent=humanTime(settings.afternoonBreakTime||'15:00');$('summaryGoal').textContent=Number(settings.goalHours||8)+' hours'}
 function openWorkSettings(open){$('workSettingsPanel').hidden=!open;$('workSettingsSummary').hidden=open;if(open)$('startTime').focus()}

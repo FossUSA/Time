@@ -1,4 +1,4 @@
-const CACHE_NAME = 'foss-mytime-shell-v12';
+const CACHE_NAME = 'foss-mytime-shell-v13';
 const SHELL = ['/', '/index.html', '/manifest.json', '/foss-icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil((async () => {

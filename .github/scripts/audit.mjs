@@ -21,13 +21,13 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.8"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.2.9"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v12"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v13"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
-assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.8"), "The punch conflict merger must load before app core.");
+assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.9"), "The punch conflict merger must load before app core.");
 assert(read("assets/js/05-cloud-merge.js").includes("mergePunches"), "The punch conflict helper is required.");
 assert(read("assets/js/10-app-core.js").includes("window.MyTimeCloudMerge.mergePunches(base,local,remote)"), "Punch conflicts must use identity-aware three-way merging.");
 assert(read("assets/js/10-app-core.js").includes("await window.myTimeFlushCloudSync()"), "Workday settings must await Cloudflare confirmation.");
@@ -70,26 +70,29 @@ assert(!read("assets/js/10-app-core.js").includes("String(key).startsWith('foss-
 assert(!read("assets/js/30-quality-of-life.js").includes("priorRender();snapshot()"), "The 15-second dashboard refresh must not write a recovery snapshot.");
 assert(read("assets/js/10-app-core.js").includes("foss-time-recovery-snapshot-v1-status"), "Local recovery snapshots must stay out of the cloud-sync stream.");
 const calendarUi = read("assets/js/20-navigation.js");
-assert(calendarUi.includes("async function confirmCalendarBreakSave"), "Break/lunch edits must use asynchronous confirmation.");
-assert(calendarUi.includes("await window.myTimeFlushCloudSync()"), "Break/lunch edits must flush the cloud save before confirmation.");
-assert(calendarUi.includes("cache:'no-store'"), "Break/lunch confirmation must read back the latest D1 record.");
-assert(calendarUi.includes("calendarBreakSnapshot(payload.payload.records?.[dateKey])"), "The edited date's exact break fields must be verified against D1.");
-assert(calendarUi.includes("function calendarBreakSummary"), "Documented break entries must have a shared display formatter.");
+assert(calendarUi.includes("function calendarBreakSummary"), "Documented break entries must have one shared display formatter.");
 assert(calendarUi.includes("calendarBreakSummary(rec,true)"), "The Records manager must display documented break entries.");
-assert(calendarUi.includes("Lunch record start") && calendarUi.includes("Lunch record end"), "CSV export must include separate documented lunch times.");
 assert(calendarUi.includes("calendar-print-breaks"), "Printed calendars must display documented break entries separately from punches.");
-assert(read("assets/js/10-app-core.js").includes("calendarBreakSummary(r,true)"), "Dashboard monthly records must display the saved lunch and break documentation.");
-assert(read("index.html").includes("Documented lunch &amp; breaks"), "Monthly and Records views must label documentary break records separately from punches.");
 assert(calendarUi.includes("hasDocumentedBreakRecord(rec)"), "Calendar must include days with documented breaks even when they have no punches.");
-assert(calendarUi.includes("Save selected-day changes"), "Selected-day punches and documented breaks must share one explicit save action.");
-assert(calendarUi.includes("function ensureCalendarDraft()"), "Selected-day changes must use one staged cloud-record draft.");
-assert(!calendarUi.includes("sel.onchange=()=>{const rec=ensureBreakFields"), "Changing a break status must not auto-save before the user presses Save.");
-assert(!calendarUi.includes("setTimeout(()=>commitBreakTime(false),1400)"), "Typing in a break time must not trigger an implicit save.");
-assert(calendarUi.includes("async function verifyDateRecordSaved"), "Manage records must verify the exact edited date against D1.");
-assert(calendarUi.includes("stableRecordJson(payload.payload.records?.[dateKey]||null)"), "Record save confirmation must compare the full record, not just the request response.");
+assert(calendarUi.includes("Lunch deducted from paid time"), "Calendar analysis must distinguish the paid-time lunch deduction.");
+assert(calendarUi.includes("id=\'editSelectedDayInRecords\'") || calendarUi.includes("editSelectedDayInRecords"), "Calendar must link to the one correction form in Manage Records.");
+assert(calendarUi.includes("window.myTimeShowPage('records')"), "Calendar edit links must open the Manage Records correction form.");
+assert(!calendarUi.includes("calendarPunchControls") && !calendarUi.includes("calendarBreakControls"), "Calendar must not duplicate the Manage Records editor.");
+assert(!calendarUi.includes("saveCalendarMakeUpNote"), "Make-up notes must be saved in the single Manage Records form.");
+assert(!calendarUi.includes("Save selected-day changes"), "Calendar must not expose a second record save action.");
+assert(calendarUi.includes("async function verifyDateRecordSaved"), "Manage Records must verify the exact edited date against D1.");
+assert(calendarUi.includes("stableRecordJson(payload.payload.records?.[dateKey]||null)"), "Record save confirmation must compare the complete record, not just the request response.");
 assert(calendarUi.includes("Lunch out and lunch in must both be entered"), "Record editor must reject incomplete lunch punch pairs.");
 assert(calendarUi.includes("Enter both start and end times for '+name"), "Record editor must reject incomplete documented break ranges.");
-
+assert(calendarUi.includes("record-date-select"), "The read-only history table must select a date into the single correction form.");
+assert(!calendarUi.includes("record-row-actions"), "The records table must not contain a second Edit/Delete action area.");
+assert(read("index.html").includes('id="editMakeUpNote"'), "Make-up notes must be edited in the single correction form.");
+assert(calendarUi.includes("editMakeUpNote"), "The single record save must load and save make-up notes.");
+const cloudCore = read("assets/js/10-app-core.js");
+assert(cloudCore.includes("if(cloudSyncReady&&!cloudSyncBlocked)"), "A failed browser recovery write must not block an authenticated Cloudflare save.");
+assert(cloudCore.includes("Cloudflare save continues"), "Recovery-storage failure should be non-blocking and reported.");
+assert(cloudCore.includes("data=remote.records"), "Cloudflare records must be loaded into memory independently of browser storage.");
+assert(cloudCore.includes("safeCloudStorageGet"), "Optional browser storage reads must be guarded.");
 assert(pkg.scripts?.test, "Repository test script is missing.");
 
 console.log("myTIME audit passed: browser assets, syntax, Access auth, D1 revision guards, webhook routing, and service-worker policy.");
