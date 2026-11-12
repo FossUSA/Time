@@ -115,6 +115,7 @@ function mergeCloudValue(base,local,remote,key){
  return cloneCloudValue(local);
 }
 function mergeCloudPayload(base,local,remote){
+ if(window.MyTimeCloudMerge)window.MyTimeCloudMerge.lastConflicts=0;
  return mergeCloudValue(base||{},local||{},remote||{},'payload');
 }
 function emptyCloudPayload(){
@@ -149,7 +150,7 @@ async function syncCloudNow(){
    cloudSyncRetryCount=0;cloudSyncRetryPending=false;
    window.myTimeAutoCloudConnected=true;
    const root=$('saveStatus'),label=$('saveStatusText');
-   if(root&&label){root.classList.remove('save-status-error');root.classList.add('save-status-ok');label.textContent='Cloud saved · '+(j.email||'your FOSS account');root.title='Confirmed saved in your Cloudflare D1 account. Latest cloud revision '+cloudRevision+'.'}
+   const mergeConflicts=Number(window.MyTimeCloudMerge?.lastConflicts||0);if(root&&label){root.classList.remove('save-status-error');root.classList.add('save-status-ok');label.textContent=mergeConflicts?'Cloud saved · '+mergeConflicts+' simultaneous punch correction(s) need review':'Cloud saved · '+(j.email||'your FOSS account');root.title=mergeConflicts?'Cloud save confirmed. Two devices changed the same punch; this device’s value was retained. Review the affected date.':'Confirmed saved in your Cloudflare D1 account. Latest cloud revision '+cloudRevision+'.'}
    return true;
   }
   throw new Error('Cloud save retry limit reached. Your edits have not been discarded.');
