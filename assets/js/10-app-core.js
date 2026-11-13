@@ -209,7 +209,7 @@ window.myTimeFlushCloudSync=async function(){
  throw new Error('Cloud kept changing during the save. Your edit is retained and will retry automatically.');
 };
 window.myTimeSaveAndVerifyRecord=async function(dateKey,expectedRecord){
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(dateKey||'')))throw new Error('Choose a valid work date before saving.');
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey||'')))throw new Error('Choose a valid work date before saving.');
  if(!cloudSyncReady)throw new Error('Cloudflare is still loading your account. Wait for the cloud record to finish loading, then try Save changes again.');
  if(cloudSyncBlocked)throw new Error('Cloud changes are paused because a newer copy must be loaded first. Reload the latest Cloudflare record, then retry.');
  // Force the currently edited in-memory record into the normal D1 sync path.
