@@ -21,13 +21,13 @@ for (const url of sources.filter((url) => url.startsWith("/assets/js/"))) {
   new vm.Script(read(path), { filename: path });
 }
 
-assert(html.includes("/assets/css/mytime.css?v=1.2.9"), "Versioned app stylesheet is missing.");
+assert(html.includes("/assets/css/mytime.css?v=1.3.0"), "Versioned app stylesheet is missing.");
 assert(existsSync("assets/css/mytime.css"), "Main stylesheet asset is missing.");
 assert(!/<style\b/i.test(html), "Main document should not contain inline CSS.");
-assert(sw.includes("foss-mytime-shell-v13"), "Service worker cache version is not updated.");
+assert(sw.includes("foss-mytime-shell-v14"), "Service worker cache version is not updated.");
 assert(sw.includes("url.pathname.startsWith('/api/')"), "API requests must bypass service-worker caching.");
 assert(sw.includes("cache: 'no-store'"), "API requests must use a fresh network response.");
-assert(html.includes("/assets/js/05-cloud-merge.js?v=1.2.9"), "The punch conflict merger must load before app core.");
+assert(html.includes("/assets/js/05-cloud-merge.js?v=1.3.0"), "The punch conflict merger must load before app core.");
 assert(read("assets/js/05-cloud-merge.js").includes("mergePunches"), "The punch conflict helper is required.");
 assert(read("assets/js/10-app-core.js").includes("window.MyTimeCloudMerge.mergePunches(base,local,remote)"), "Punch conflicts must use identity-aware three-way merging.");
 assert(read("assets/js/10-app-core.js").includes("await window.myTimeFlushCloudSync()"), "Workday settings must await Cloudflare confirmation.");
@@ -110,3 +110,14 @@ assert(calendarUi.includes("editSelectedDayInRecords"), "Calendar must open the 
 assert(!calendarUi.includes("calendarPunchControls") && !calendarUi.includes("calendarBreakControls"), "Calendar must not contain duplicate editable controls.");
 assert(!calendarUi.includes("copyCalendarDocumentedLunchToPunches"), "Lunch corrections must be made only in Manage Records.");
 assert(!calendarUi.includes("saveCalendarMakeUpNote"), "Calendar must not have a separate make-up note save action.");
+
+const cloudCoreSave = read("assets/js/10-app-core.js");
+const recordSaveUi = read("assets/js/20-navigation.js");
+assert(cloudCoreSave.includes("window.myTimeSaveAndVerifyRecord=async function(dateKey,expectedRecord)"), "Save changes must have a direct Cloudflare save-and-verify path.");
+assert(cloudCoreSave.includes("cloudSyncDirty=true;") && cloudCoreSave.includes("await window.myTimeFlushCloudSync();"), "The explicit save must force the D1 sync before read-back.");
+assert(cloudCoreSave.includes("cloudValueEqual(cloudRecord,expectedRecord)"), "A save must verify the exact edited date against the D1 response.");
+assert(recordSaveUi.includes("window.myTimeSaveAndVerifyRecord"), "Manage Records must use the immediate D1 verification helper.");
+assert(recordSaveUi.includes("recordEditSaveStatus"), "Manage Records must show save confirmation beside Save changes.");
+assert(html.includes('id="recordEditSaveStatus"'), "The record editor must contain its visible save status.");
+assert(recordSaveUi.includes("hasMakeUpNoteEdit"), "A make-up-note-only correction must be saveable.");
+assert(!recordSaveUi.includes("The browser could not store a temporary copy"), "Browser recovery storage must not be treated as the required record save.");

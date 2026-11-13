@@ -266,6 +266,10 @@ function recordHH(ts){if(!ts)return '';const d=new Date(ts);return String(d.getH
 function managerRecordTimes(k){const p=data[k]?.punches||[],first=t=>p.find(x=>x.type===t);return {cin:first('in')?.ts,lo:first('lunch-start')?.ts,li:first('lunch-end')?.ts,cout:[...p].reverse().find(x=>x.type==='out')?.ts}}
 function stableRecordJson(value){if(Array.isArray(value))return value.map(stableRecordJson);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,stableRecordJson(value[key])]));return value}
 async function verifyDateRecordSaved(dateKey){
+ if(typeof window.myTimeSaveAndVerifyRecord==='function'){
+  const result=await window.myTimeSaveAndVerifyRecord(dateKey,JSON.parse(JSON.stringify(data[dateKey]||null)));
+  return Number(result?.revision||0);
+ }
  if(typeof window.myTimeFlushCloudSync!=='function')throw new Error('Cloud save confirmation is unavailable.');
  await window.myTimeFlushCloudSync();
  const response=await fetch('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
@@ -322,7 +326,7 @@ function copyDocumentedLunchToPunches(){
 function openRecordEditor(k){
  const input=document.getElementById('recordDate');input.value=k;const exists=!!data[k];const p=managerRecordTimes(k);
  document.getElementById('editClockIn').value=recordHH(p.cin);document.getElementById('editLunchOut').value=recordHH(p.lo);document.getElementById('editLunchIn').value=recordHH(p.li);document.getElementById('editClockOut').value=recordHH(p.cout);
- document.getElementById('editReason').value='';const br=data[k]||{},bs=br.breakStatus||{},bt=br.breakTimes||{};document.getElementById('editMakeUpNote').value=String(br.makeUpNote||'');['lunch','morning','afternoon'].forEach(name=>{const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)status.value=['taken','skipped','not-recorded'].includes(bs[name])?bs[name]:'not-recorded';if(start)start.value=bt[name]?.start||'';if(end)end.value=bt[name]?.end||''});document.getElementById('recordEditorTitle').textContent=(exists?'Edit punches for ':'Add punches for ')+k;document.getElementById('deleteRecordDay').hidden=!exists;document.getElementById('recordEditor').hidden=false;updateRecordPaidTimePreview();
+ document.getElementById('editReason').value='';const br=data[k]||{},bs=br.breakStatus||{},bt=br.breakTimes||{};document.getElementById('editMakeUpNote').value=String(br.makeUpNote||'');const saveStatus=document.getElementById('recordEditSaveStatus');if(saveStatus){saveStatus.textContent='';saveStatus.dataset.state=''}const saveButton=document.getElementById('saveRecordEdit');if(saveButton){saveButton.disabled=false;saveButton.textContent='Save changes'}['lunch','morning','afternoon'].forEach(name=>{const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');if(status)status.value=['taken','skipped','not-recorded'].includes(bs[name])?bs[name]:'not-recorded';if(start)start.value=bt[name]?.start||'';if(end)end.value=bt[name]?.end||''});document.getElementById('recordEditorTitle').textContent=(exists?'Edit punches for ':'Add punches for ')+k;document.getElementById('deleteRecordDay').hidden=!exists;document.getElementById('recordEditor').hidden=false;updateRecordPaidTimePreview();
 }
 function deleteRecordDate(k){
  if(!data[k])return;if(!confirm('Permanently delete all punch records for '+k+' from your Cloudflare timecard? This removes them from your account across devices.'))return;
@@ -337,46 +341,65 @@ document.getElementById('newRecordBtn')?.addEventListener('click',()=>{const d=d
 document.getElementById('cancelRecordEdit')?.addEventListener('click',()=>document.getElementById('recordEditor').hidden=true);
 document.getElementById('deleteRecordDay')?.addEventListener('click',()=>deleteRecordDate(document.getElementById('recordDate').value));
 document.getElementById('saveRecordEdit')?.addEventListener('click',async()=>{
- const k=document.getElementById('recordDate').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(k)){alert('Choose a valid work date first.');return}
- const values=[['in',document.getElementById('editClockIn').value],['lunch-start',document.getElementById('editLunchOut').value],['lunch-end',document.getElementById('editLunchIn').value],['out',document.getElementById('editClockOut').value]],seq=values.filter(x=>x[1]).map(x=>x[1]);
- const hasBreakEdits=['lunch','morning','afternoon'].some(name=>{const status=document.getElementById('edit'+name+'Status')?.value||'not-recorded',start=document.getElementById('edit'+name+'Start')?.value||'',end=document.getElementById('edit'+name+'End')?.value||'';return status!=='not-recorded'||!!start||!!end});
- if(!seq.length&&!hasBreakEdits){alert('Enter at least one punch or documented break entry, or use Delete to remove the date.');return}
- if(values[1][1]&&!values[2][1]||!values[1][1]&&values[2][1]){alert('Lunch out and lunch in must both be entered, or both left blank.');return}
- for(let i=1;i<seq.length;i++)if(seq[i]<seq[i-1]){alert('Punch times must be chronological: clock in, lunch out, lunch in, clock out.');return}
- if(values[1][1]&&!values[0][1]||values[2][1]&&!values[1][1]||values[3][1]&&!values[0][1]){alert('Add the preceding punch first (clock in before lunch, lunch out before lunch in, and clock in before clock out).');return}
+ const k=document.getElementById('recordDate').value,saveButton=document.getElementById('saveRecordEdit'),status=document.getElementById('recordEditSaveStatus');
+ const showStatus=(message,state='info')=>{if(status){status.textContent=message;status.dataset.state=state}const globalStatus=document.getElementById('saveStatusText');if(globalStatus)globalStatus.textContent=message};
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(k)){showStatus('Choose a valid work date before saving.','error');return}
+ const values=[['in',document.getElementById('editClockIn').value],['lunch-start',document.getElementById('editLunchOut').value],['lunch-end',document.getElementById('editLunchIn').value],['out',document.getElementById('editClockOut').value]];
+ const seq=values.filter(x=>x[1]).map(x=>x[1]),existingBefore=data[k]||{punches:[],audit:[]};
+ const makeUpNoteInput=String(document.getElementById('editMakeUpNote')?.value||'').trim();
+ const hasMakeUpNoteEdit=makeUpNoteInput!==String(existingBefore.makeUpNote||'').trim();
+ const hasBreakEdits=['lunch','morning','afternoon'].some(name=>{
+  const state=document.getElementById('edit'+name+'Status')?.value||'not-recorded',start=document.getElementById('edit'+name+'Start')?.value||'',end=document.getElementById('edit'+name+'End')?.value||'';
+  return state!=='not-recorded'||!!start||!!end;
+ });
+ if(!seq.length&&!hasBreakEdits&&!hasMakeUpNoteEdit){showStatus('Nothing to save yet. Enter a punch, a documented lunch/break entry, or a make-up note.','error');return}
+ if((values[1][1]&&!values[2][1])||(!values[1][1]&&values[2][1])){showStatus('Lunch out and lunch in must both be entered, or both left blank.','error');return}
+ for(let i=1;i<seq.length;i++)if(seq[i]<seq[i-1]){showStatus('Punch times must be chronological: clock in, lunch out, lunch in, clock out.','error');return}
+ if((values[1][1]&&!values[0][1])||(values[2][1]&&!values[1][1])||(values[3][1]&&!values[0][1])){showStatus('Add the preceding punch first: clock in before lunch and clock out.','error');return}
  const original=data[k]||{punches:[],audit:[]},originalPunches=Array.isArray(original.punches)?original.punches:[],selectedOriginal=new Set();
- const replacements=values.map(([type,t])=>{
+ const replacements=values.map(([type,time])=>{
   const prior=originalPunches.find(item=>item.type===type&&!selectedOriginal.has(item));
   if(prior)selectedOriginal.add(prior);
-  if(!t)return null;
-  const ts=new Date(k+'T'+t+':00').getTime();
+  if(!time)return null;
+  const ts=new Date(k+'T'+time+':00').getTime();
   if(!Number.isFinite(ts))return null;
   return {...(prior||{}),eventId:prior?.eventId||(prior?String(prior.type)+'|'+String(prior.ts):String(type)+'|'+String(ts)),type,ts};
  }).filter(Boolean);
- // Preserve every non-edited event, including rest-break punches and extra
- // lunch cycles. The correction form replaces only its four displayed events.
  const punches=[...originalPunches.filter(item=>!selectedOriginal.has(item)),...replacements].sort((a,b)=>Number(a.ts)-Number(b.ts));
  const reason=document.getElementById('editReason').value.trim()||'Manually edited in Manage records';
  const breakStatus={...(original.breakStatus||{})},breakTimes={...(original.breakTimes||{})};
  for(const name of ['lunch','morning','afternoon']){
-  const status=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');
-  if(status)breakStatus[name]=status.value;
+  const state=document.getElementById('edit'+name+'Status'),start=document.getElementById('edit'+name+'Start'),end=document.getElementById('edit'+name+'End');
+  if(state)breakStatus[name]=state.value;
   if(start||end){
    const a=start?.value||'',b=end?.value||'';
-   if((a&&!b)||(!a&&b)){alert('Enter both start and end times for '+name+' or leave both blank.');return}
-   if(a&&b&&b<a){alert('The end time must be after the start time for '+name+'.');return}
+   if((a&&!b)||(!a&&b)){showStatus('Enter both start and end times for '+name+', or leave both blank.','error');return}
+   if(a&&b&&b<a){showStatus('The end time must be after the start time for '+name+'.','error');return}
    breakTimes[name]={start:a,end:b};
   }
  }
- const makeUpNote=String(document.getElementById('editMakeUpNote')?.value||'').trim();
+ const makeUpNote=makeUpNoteInput;
  const before={punches:originalPunches.map(item=>({...item})),breakStatus:{...(original.breakStatus||{})},breakTimes:{...(original.breakTimes||{})},makeUpNote:original.makeUpNote||''};
  const after={punches:punches.map(item=>({...item})),breakStatus:{...breakStatus},breakTimes:{...breakTimes},makeUpNote};
  const audit=[...(original.audit||[]),{at:Date.now(),reason,before,after}];
  const record={...original,punches,audit,breakStatus,breakTimes,makeUpNote};
- const saveButton=document.getElementById('saveRecordEdit');if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving and verifying…'}
- data[k]=record;render();renderRecordManager();
- const locallySaved=save();
- const status=document.getElementById('importStatus');if(status)status.textContent='Saving corrections for '+k+' to Cloudflare…';try{if(!locallySaved)throw new Error('The browser could not store a temporary copy of this correction.');const revision=await verifyDateRecordSaved(k);if(status)status.textContent='Cloudflare verified · '+k+' · revision '+revision;document.getElementById('recordEditor').hidden=true;if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar()}catch(error){if(status)status.textContent='Save not verified for '+k+' · your edit remains in this browser: '+error.message;setSaveStatus(false,'Record correction not verified · pending data kept')}finally{if(saveButton){saveButton.disabled=false;saveButton.textContent='Save changes'}}
+ if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving to Cloudflare…'}
+ showStatus('Sending '+k+' to Cloudflare D1…','pending');
+ data[k]=record;
+ try{
+  save();
+  const revision=await verifyDateRecordSaved(k);
+  showStatus('Saved and verified in Cloudflare · '+k+' · revision '+revision,'success');
+  try{render();renderRecordManager();if(typeof renderMyTimeCalendar==='function')renderMyTimeCalendar();if(typeof renderPlanning==='function')renderPlanning()}catch(renderError){console.warn('myTIME refreshed the saved record but a view did not redraw:',renderError)}
+  updateRecordPaidTimePreview();
+ }catch(error){
+  const message=String(error?.message||error);
+  showStatus('NOT SAVED · '+message+' Your entries are still shown here; correct the issue and click Save changes again.','error');
+  setSaveStatus(false,'Record save not verified · pending edits kept');
+  console.error('myTIME record correction could not be verified in D1:',error);
+ }finally{
+  if(saveButton){saveButton.disabled=false;saveButton.textContent='Save changes'}
+ }
 });
 document.getElementById('downloadRecordsCsv')?.addEventListener('click',()=>{
  const escapeCsv=v=>'"'+String(v??'').replace(/"/g,'""')+'"',lines=[['Date','Clock In','Lunch Out','Lunch In','Clock Out','Paid Minutes','Notes']];

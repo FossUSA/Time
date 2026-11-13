@@ -717,3 +717,10 @@ html.mytime-cloud-pending main.shell{visibility:hidden!important;pointer-events:
 .record-date-select{appearance:none;border:0;background:transparent;color:var(--link,var(--primary,#173eaa));font:inherit;font-weight:700;padding:4px 6px;margin:-4px -6px;border-radius:6px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .record-date-select:hover{background:var(--surface-2,rgba(23,62,170,.08))}
 .record-date-select:focus-visible{outline:2px solid var(--focus,#6aa7ff);outline-offset:2px}
+
+/* Visible, date-specific confirmation for Manage Records corrections. */
+.record-save-status{margin:10px 0 0;padding:10px 12px;border-radius:9px;min-height:1.1em;font-weight:650;line-height:1.45}
+.record-save-status:empty{display:none}
+.record-save-status[data-state="pending"]{display:block;background:rgba(64,110,180,.09);color:var(--text,#17315f)}
+.record-save-status[data-state="success"]{display:block;background:rgba(35,145,83,.11);color:#17663d}
+.record-save-status[data-state="error"]{display:block;background:rgba(190,50,50,.10);color:#a12b2b}

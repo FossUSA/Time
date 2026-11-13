@@ -208,6 +208,24 @@ window.myTimeFlushCloudSync=async function(){
  }
  throw new Error('Cloud kept changing during the save. Your edit is retained and will retry automatically.');
 };
+window.myTimeSaveAndVerifyRecord=async function(dateKey,expectedRecord){
+ if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(dateKey||'')))throw new Error('Choose a valid work date before saving.');
+ if(!cloudSyncReady)throw new Error('Cloudflare is still loading your account. Wait for the cloud record to finish loading, then try Save changes again.');
+ if(cloudSyncBlocked)throw new Error('Cloud changes are paused because a newer copy must be loaded first. Reload the latest Cloudflare record, then retry.');
+ // Force the currently edited in-memory record into the normal D1 sync path.
+ // This avoids relying on browser storage or the debounce timer to trigger it.
+ cloudSyncDirty=true;
+ clearTimeout(cloudSyncTimer);
+ await window.myTimeFlushCloudSync();
+ const {body:j}=await cloudRequest('/api/records',{method:'GET',credentials:'same-origin',cache:'no-store'});
+ if(!j.payload||!j.payload.records||!Object.prototype.hasOwnProperty.call(j.payload.records,dateKey))throw new Error('Cloudflare did not return the saved date '+dateKey+'. The correction has not been verified.');
+ const cloudRecord=j.payload.records[dateKey];
+ if(!cloudValueEqual(cloudRecord,expectedRecord))throw new Error('Cloudflare returned a different version of '+dateKey+'. Your entries remain in the editor; reload the cloud record before retrying.');
+ cloudRevision=Number(j.revision||cloudRevision);
+ cloudBasePayload=cloneCloudValue(j.payload);
+ window.myTimeAutoCloudConnected=true;
+ return {revision:cloudRevision,updatedAt:j.updatedAt||null};
+};
 async function initCloudSync() {
  clearTimeout(cloudSyncTimer);
  cloudSyncReady=false;

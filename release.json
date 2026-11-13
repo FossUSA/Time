@@ -1,7 +1,12 @@
 {
-  "version": "1.2.9",
-  "announcement": false,
-  "title": "",
-  "summary": "",
-  "changes": []
+  "version": "1.3.0",
+  "announcement": true,
+  "title": "More reliable timecard saving",
+  "summary": "Save changes now forces a Cloudflare D1 write and verifies the exact saved date. The editor also shows a clear saved or not-saved result.",
+  "changes": [
+    "Immediate Cloudflare save and exact D1 read-back verification",
+    "Visible save status beside the correction form",
+    "Make-up-note-only corrections can now be saved",
+    "Browser recovery storage no longer blocks cloud saves"
+  ]
 }
